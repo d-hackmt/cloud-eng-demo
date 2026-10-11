@@ -59,7 +59,7 @@ gcloud run services update moderaai --project=gcp-fde-project --region=us-centra
 | 2 | concurrency 5 | **10** |
 | 3 | concurrency 5, max-instances 2 | **2**: the ceiling holds |
 
-The total time barely changed between runs, because the Gemini call is the slow part and extra requests just wait their turn.
+In run 3 only 10 requests fit at once (2 instances × 5). On our first run the rest waited their turn; on a later run Cloud Run turned 40 of them away straight away with HTTP **429** ("too many requests"). Either way, the ceiling is real: it limits your bill, and past it callers wait or are told to try again.
 
 ## Common Pitfalls
 

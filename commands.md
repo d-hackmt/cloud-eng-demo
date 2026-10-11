@@ -147,46 +147,57 @@ The same checks in a browser: open https://moderaai-1039893753206.us-central1.ru
 
 ### Load test, and count the instances
 
-Each run: note the start time, fire 50 requests at once, then count which instances served them. The request logs
-can take 1 to 2 minutes to appear: if the count prints nothing, run the `gcloud logging read` line again a minute
-later. The Console's instance graph lags by minutes.
+Each run: fire 50 requests at once, then count which instances served them. Every settings change creates a new
+revision, so the count looks at the current revision's requests from the last 10 minutes. (It doesn't use your
+laptop's clock: on the 2026-10-11 run the laptop was 6 minutes ahead of Google's, and a filter based on it found
+nothing.) The request logs take 1 to 2 minutes to appear: if the count prints nothing, run it again a minute later.
+The Console's instance graph lags by minutes.
+
+First, save the count command as a small shell function (paste this once per terminal):
+
+```bash
+count_instances() {
+  REV=$(gcloud run services describe moderaai --region=us-central1 --project=gcp-fde-project --format="value(status.latestReadyRevisionName)")
+  echo "revision $REV:"
+  gcloud logging read "resource.type=cloud_run_revision AND resource.labels.revision_name=$REV AND httpRequest.requestMethod=POST" \
+    --project=gcp-fde-project --freshness=10m --limit=200 --format="value(labels.instanceId,httpRequest.status)" \
+  | awk '{ if (NF == 1) print "refused, no instance  HTTP " $1; else print "instance ..." substr($1, length($1)-7) "  HTTP " $2 }' \
+  | sort | uniq -c
+}
+```
 
 ```bash
 # Run 1: Cloud Run's default concurrency (80 requests per instance)
-START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 uv run python scripts/load_test.py --url https://moderaai-1039893753206.us-central1.run.app --requests 50
-gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=moderaai AND httpRequest.requestMethod=POST AND timestamp>=\"$START\"" \
-  --project=gcp-fde-project --limit=200 --format="value(labels.instanceId)" | sort | uniq -c
-# -> 1 instance served all 50
+count_instances
+# -> 50 on 1 instance
 
 # Run 2: at most 5 requests per instance, so 50 requests need more instances
 gcloud run services update moderaai --project=gcp-fde-project --region=us-central1 --concurrency=5 --quiet
-START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 uv run python scripts/load_test.py --url https://moderaai-1039893753206.us-central1.run.app --requests 50
-gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=moderaai AND httpRequest.requestMethod=POST AND timestamp>=\"$START\"" \
-  --project=gcp-fde-project --limit=200 --format="value(labels.instanceId)" | sort | uniq -c
-# -> 10 instances (5 to 7 requests each)
+count_instances
+# -> 10 lines, one per instance, 3 to 6 requests each, all HTTP 200
 
 # Run 3: cap the service at 2 instances
 gcloud run services update moderaai --project=gcp-fde-project --region=us-central1 --max-instances=2 --quiet
-START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 uv run python scripts/load_test.py --url https://moderaai-1039893753206.us-central1.run.app --requests 50
-gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=moderaai AND httpRequest.requestMethod=POST AND timestamp>=\"$START\"" \
-  --project=gcp-fde-project --limit=200 --format="value(labels.instanceId)" | sort | uniq -c
-# -> 2 instances
+count_instances
+# -> 5 + 5 on 2 instances (HTTP 200), and 40 "refused, no instance  HTTP 429"
 
 # put the ceiling back
 gcloud run services update moderaai --project=gcp-fde-project --region=us-central1 --max-instances=10 --quiet
 ```
 
-| Run | max-instances | concurrency | Instances that served the 50 requests | Wall time (recorded) |
+| Run | max-instances | concurrency | 2026-09-20 | 2026-10-11 |
 |---|---|---|---|---|
-| 1 | 10 | 80 (default) | **1** | 8.6 s |
-| 2 | 10 | 5 | **10** | 10.8 s |
-| 3 | 2 | 5 | **2** | 9.8 s |
+| 1 | 10 | 80 (default) | **1** instance, 50/50 OK | **1** instance, 50/50 OK |
+| 2 | 10 | 5 | **10** instances, 50/50 OK | **10** instances, 50/50 OK |
+| 3 | 2 | 5 | **2** instances, 50/50 OK (the extra requests waited) | **2** instances, 10 OK, **40 refused with HTTP 429** |
 
-The instance count proves the ceiling. The wall time barely changes, because the Gemini call dominates and extra
-requests just queue.
+The instance count proves the ceiling. Run 3 shows the other side of it: 2 instances × 5 requests is room for 10
+at a time. On the first run the rest waited in a queue; on the second, Cloud Run turned them away straight away with
+a 429 ("too many requests"). Either way the ceiling holds, and a real client should retry a 429 after a short wait.
+This 429 comes from Cloud Run itself, not from topic 9's API Gateway.
 
 ---
 
@@ -351,7 +362,7 @@ curl -X POST https://moderaai-1039893753206.us-central1.run.app/moderate -H "Con
   -d '{"text": "I disagree with this policy."}'
 # -> flagged: true, policy: strict
 
-# 3. roll back: one command, no rebuild (took 9 seconds)
+# 3. roll back: one command, no rebuild (9 s on 2026-09-20, 13 s on 2026-10-11)
 gcloud run services update-traffic moderaai --region=us-central1 --project=gcp-fde-project \
   --to-revisions=$V1_REVISION=100
 
@@ -474,7 +485,8 @@ echo $MANAGED_SERVICE
 gcloud services enable "$MANAGED_SERVICE" --project=gcp-fde-project
 ```
 
-Create the gateway. This is the slowest step of the module (10 min 41 s on the original run). Save its address in
+Create the gateway. This can be the slowest step of the module (10 min 41 s on 2026-09-20, about 2 minutes on
+2026-10-11). Save its address in
 `.env`:
 
 ```bash
@@ -520,7 +532,7 @@ gcloud endpoints configs describe "$CONFIG_ID" --service="$MANAGED_SERVICE" --fo
 # 15 requests in a burst through the gateway (load_test.py reads API_KEY from .env)
 START=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 uv run python scripts/load_test.py --url "$GATEWAY_URL" --requests 15
-# -> 15/15 succeeded, 0 rejected with 429  (and 40/40 in a second burst)
+# -> 15/15 succeeded, 0 rejected with 429  (and 40/40 in a second burst; the same on 2026-09-20 and 2026-10-11)
 sleep 90
 END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -556,6 +568,22 @@ uv run python scripts/cost_comparison_demo.py
 The prices in the script are illustrative ($0.0001 and $0.0025 per 1K tokens). Read the ratio (about 25 times), not
 the dollars. `/stats` counts per instance and resets on a cold start, so part 2 is only exact when one instance answers
 the whole run.
+
+On 2026-10-11 (concurrency 5, so requests spread over several instances) part 2 printed "Real Gemini calls: 1",
+because `/stats` only saw one instance's count. Firestore is the reliable check: all 3 texts had been saved during the
+run, so there were 3 real calls and 3 avoided. To check it yourself:
+
+```bash
+uv run python - <<'EOF'
+import hashlib
+from google.cloud import firestore
+db = firestore.Client(project="gcp-fde-project")
+for text in ["This is a test comment.", "Another unique comment here.", "A third, brand new comment."]:
+    key = hashlib.sha256(f"standard:{text.strip().lower()}".encode()).hexdigest()
+    print(f"{text:32} cached: {db.collection('moderation_cache').document(key).get().exists}")
+EOF
+# -> True for all 3: each was a real Gemini call once, then served from the cache
+```
 
 **Part 3: thinking tokens.** Gemini 2.5 "thinks" before it answers, and those tokens are billed as output. The
 script's "output tokens" leaves them out. Compare one request with thinking on and off:
