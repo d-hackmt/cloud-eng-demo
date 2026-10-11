@@ -150,6 +150,8 @@ These were made after the teardown, then deployed to Cloud Run (from source and 
 | `cloudbuild.yaml`'s deploy sets the service account and every env var | fixes problem 8 for CI/CD: a push can no longer ship leftover settings |
 | A simple web page at `/` | try the service in a browser, without `curl` |
 | The failure switches (`?simulate_transient_failure`, `?simulate_hang`) removed | anyone could use them on the public service; topics 7 and 8 now use a temporary 1 ms-timeout revision, which shows real retries and a real timeout |
+| Image moderation with Gemini: `POST /moderate-image` and an Image tab on the page, with sample images | Gemini reads text in images and judges context; same policy, cache and limits as text (5 MB, JPEG/PNG/WebP only) |
+| `vision-demo/`: a separate local app using Cloud Vision SafeSearch | to compare: SafeSearch only scores fixed categories and doesn't read text (it allowed the gun-with-a-threat image that Gemini flagged) |
 | The Windows `.bat` scripts and the teaching plan removed | replaced by `commands.md`; the `.bat` files were broken anyway (old paths, `--tag=v2`) |
 | Texts over 5,000 characters get a 413; a body that isn't a JSON object gets a 400 instead of a 500 | caps the cost of one request; a JSON list used to crash the handler |
 | The comment is sent to Gemini apart from the instructions | a comment can't easily give the model orders; a test "ignore your rules" comment was flagged, not obeyed |

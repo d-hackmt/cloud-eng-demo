@@ -597,6 +597,100 @@ The cost levers, biggest first: caching (calls avoided entirely), the model (Fla
 
 ---
 
+## Extra A — Image moderation with Gemini (in ModeraAI)
+
+ModeraAI has a second endpoint, `/moderate-image`, and the web page has an **Image** tab. Gemini checks what the
+image shows *and* any text written in it, with the same standard/strict policy as the text check. Nothing extra
+to set up: it uses the same model, service account and Firestore cache. Any deploy above (topic 1 or 2) includes it.
+
+Send the sample images (run from the repo root; the samples are in `moderaai/static/samples/`):
+
+```bash
+for f in landscape.png friendly-text.png insult-text.png rude-gesture.jpg museum-weapons.jpg handgun.jpg handgun-threat.jpg; do
+  echo "== $f"
+  curl -s -F "image=@moderaai/static/samples/$f" https://moderaai-1039893753206.us-central1.run.app/moderate-image
+  echo
+done
+```
+
+What Gemini decided (2026-10-11, standard policy):
+
+| Image | flagged | Why |
+|---|---|---|
+| `landscape.png` | false | nothing to flag |
+| `friendly-text.png` | false | reads "Have a great day!" |
+| `insult-text.png` | **true** | reads "You are stupid and ugly. I hate you." |
+| `rude-gesture.jpg` | **true** | middle-finger gesture |
+| `museum-weapons.jpg` | false | weapons, but in a museum display |
+| `handgun.jpg` | varies | borderline: allowed in a local test, flagged as "unsafe" on Cloud Run the same day |
+| `handgun-threat.jpg` | **true** | reads the threat "I know where you live. You're next." |
+
+The clear cases gave the same answer every time. The handgun on its own is a judgement call, and the model doesn't
+always make it the same way; a real policy would say explicitly whether weapon photos are allowed. The `category`
+text is the model's own wording, so it varies too (`harassment`, `Harassment / Threats`, ...).
+
+The same image sent twice is a cache hit (`"cache_hit": true`); the key is a hash of the image bytes plus the policy,
+and only the verdict is stored, never the image. The limits:
+
+```bash
+# not an image -> 415
+echo "not an image" > notes.txt
+curl -s -w "  HTTP %{http_code}\n" -F "image=@notes.txt" https://moderaai-1039893753206.us-central1.run.app/moderate-image
+rm notes.txt
+# -> {"error":"only JPEG, PNG and WebP images are accepted"}  HTTP 415
+
+# a form with no image -> 400 (a POST with no body at all is refused earlier by Google's front end with a 411)
+curl -s -w "  HTTP %{http_code}\n" -F "caption=no image here" https://moderaai-1039893753206.us-central1.run.app/moderate-image
+# -> {"error":"upload the image as a form field named 'image'"}  HTTP 400
+```
+
+Images over 5 MB get a 413. In the browser: open https://moderaai-1039893753206.us-central1.run.app, choose the
+**Image** tab, and pick an example.
+
+---
+
+## Extra B — SafeSearch demo app (local, separate from ModeraAI)
+
+A small app in `vision-demo/` that sends an image to Cloud Vision **SafeSearch**. SafeSearch doesn't decide; it scores
+five categories (adult, violence, racy, medical, spoof) from `VERY_UNLIKELY` to `VERY_LIKELY`. The app turns the scores
+into a decision with one rule you can change at the top of `vision-demo/app.py`: block if adult, violence or racy is
+`LIKELY` or higher. It runs on your laptop only, as your own gcloud login (from the setup).
+
+```bash
+gcloud services enable vision.googleapis.com --project=gcp-fde-project
+uv pip install -r vision-demo/requirements.txt
+
+uv run python vision-demo/app.py
+# -> Running on http://127.0.0.1:8081   (open it in a browser; Ctrl+C to stop)
+```
+
+In a second terminal, the same samples from the command line:
+
+```bash
+for f in landscape.png insult-text.png rude-gesture.jpg museum-weapons.jpg handgun.jpg handgun-threat.jpg; do
+  echo "== $f"
+  curl -s -F "image=@moderaai/static/samples/$f" http://127.0.0.1:8081/check
+  echo
+done
+```
+
+Gemini and SafeSearch side by side (2026-10-11):
+
+| Image | Gemini (ModeraAI) | SafeSearch + the rule |
+|---|---|---|
+| `landscape.png` | allow | allow (all `VERY_UNLIKELY`) |
+| `insult-text.png` | **flag**: reads the insult | **block**, but for the wrong reason: racy and medical came back `LIKELY` |
+| `rude-gesture.jpg` | **flag** | allow: no category covers rude gestures |
+| `museum-weapons.jpg` | allow | allow |
+| `handgun.jpg` | varies (borderline) | allow |
+| `handgun-threat.jpg` | **flag**: reads the threat | allow: SafeSearch doesn't read text |
+
+The takeaway: SafeSearch is fast, cheap and good at its fixed categories (nudity, gore), but it doesn't read text or
+judge context, and the decision rule is yours to write. Gemini follows a written policy and explains itself, at a
+higher cost per image.
+
+---
+
 ## Teardown
 
 The service is public (anyone with the URL can cause Gemini calls), so delete everything when you finish.
@@ -677,6 +771,8 @@ gcloud services api-keys list --project=gcp-fde-project --format="value(displayN
 curl -s -o /dev/null -w "%{http_code}\n" https://moderaai-1039893753206.us-central1.run.app/health   # 404
 ```
 
-**Left alone on purpose:** the Module 11 Maps key, the enabled APIs, the retained Cloud Logging entries, and the shared
+The SafeSearch app (Extra B) runs only on your laptop: stop it with Ctrl+C. It creates nothing in the project.
+
+**Left alone on purpose:** the Module 11 Maps key, the enabled APIs (including the Vision API from Extra B), the retained Cloud Logging entries, and the shared
 Cloud Build source bucket `gcp-fde-project_cloudbuild` (used by earlier modules too; its archives contain this repo's
 files, never `.env` or tokens).

@@ -22,20 +22,30 @@
          font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   main { max-width: 720px; margin: 0 auto; padding: 32px 16px 48px; }
   h1 { margin: 0; font-size: 1.6rem; }
-  .sub { margin: 4px 0 24px; color: var(--muted); }
+  .sub { margin: 4px 0 20px; color: var(--muted); }
+  .tabs { display: flex; gap: 4px; margin-bottom: -1px; }
+  .tab { padding: 8px 18px; color: var(--muted); background: transparent; border: 1px solid transparent;
+         border-bottom: 0; border-radius: 10px 10px 0 0; font-weight: 600; }
+  .tab[aria-selected="true"] { color: var(--text); background: var(--card); border-color: var(--border); }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .panel { border-top-left-radius: 0; }
   label { font-weight: 600; }
   textarea { width: 100%; min-height: 120px; margin-top: 8px; padding: 12px; resize: vertical; font: inherit;
              color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
   textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .between { justify-content: space-between; margin-top: 6px; }
-  .count { color: var(--muted); font-size: 0.85rem; }
+  .count, .hint { color: var(--muted); font-size: 0.85rem; }
   .examples { margin-top: 12px; }
   .examples span { color: var(--muted); font-size: 0.9rem; }
   button { font: inherit; cursor: pointer; border-radius: 8px; }
   .chip { padding: 4px 10px; font-size: 0.85rem; color: var(--text); background: transparent; border: 1px solid var(--border); }
   .chip:hover { border-color: var(--accent); }
+  .drop { display: block; margin-top: 8px; padding: 18px; text-align: center; color: var(--muted); cursor: pointer;
+          border: 2px dashed var(--border); border-radius: 8px; font-weight: 400; }
+  .drop:hover { border-color: var(--accent); }
+  .drop input { display: none; }
+  .preview { display: block; max-width: 100%; max-height: 280px; margin: 12px auto 0; border-radius: 8px; }
   .primary { margin-top: 16px; padding: 10px 22px; border: 0; color: #fff; background: var(--accent); font-weight: 600; }
   .primary:disabled { opacity: 0.6; cursor: wait; }
   .verdict { font-size: 1.3rem; font-weight: 700; padding: 6px 12px; border-radius: 8px; display: inline-block; }
@@ -52,9 +62,14 @@
 <body>
 <main>
   <h1>ModeraAI</h1>
-  <p class="sub">Paste a comment and check whether it should be blocked. <span id="policy"></span></p>
+  <p class="sub">Check whether a comment or an image should be blocked. <span id="policy"></span></p>
 
-  <div class="card">
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-text" aria-selected="true">Text</button>
+    <button class="tab" role="tab" id="tab-image" aria-selected="false">Image</button>
+  </div>
+
+  <div class="card panel" id="panel-text">
     <label for="text">Comment</label>
     <textarea id="text" maxlength="5000" placeholder="Type or paste a comment..."></textarea>
     <div class="row between">
@@ -66,8 +81,28 @@
       </div>
       <span class="count"><span id="count">0</span> / 5000</span>
     </div>
+    <button class="primary" id="check-text">Check comment</button>
+  </div>
 
-    <button class="primary" id="check">Check comment</button>
+  <div class="card panel" id="panel-image" hidden>
+    <label>Image</label>
+    <label class="drop">
+      <input type="file" id="file" accept="image/jpeg,image/png,image/webp">
+      <span id="file-label">Choose a JPEG, PNG or WebP image (up to 5 MB)</span>
+    </label>
+    <img class="preview" id="preview" alt="Preview of the chosen image" hidden>
+    <div class="row examples">
+      <span>Try:</span>
+      <button class="chip" data-sample="static/samples/landscape.png">Landscape</button>
+      <button class="chip" data-sample="static/samples/friendly-text.png">Friendly text</button>
+      <button class="chip" data-sample="static/samples/insult-text.png">Insult as text</button>
+      <button class="chip" data-sample="static/samples/rude-gesture.jpg">Rude gesture</button>
+      <button class="chip" data-sample="static/samples/museum-weapons.jpg">Weapons in a museum</button>
+      <button class="chip" data-sample="static/samples/handgun.jpg">Handgun</button>
+      <button class="chip" data-sample="static/samples/handgun-threat.jpg">Handgun + threat</button>
+    </div>
+    <p class="hint">Gemini checks what the image shows and any text written in it. The image itself is never stored.</p>
+    <button class="primary" id="check-image">Check image</button>
   </div>
 
   <div class="card" id="result" hidden>
@@ -80,11 +115,42 @@
 
 <script>
   const $ = (id) => document.getElementById(id);
+  const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
   const text = $("text");
+  let image = null;  // the chosen image, as a File or Blob
 
+  // tabs
+  for (const name of ["text", "image"]) {
+    $(`tab-${name}`).addEventListener("click", () => {
+      for (const other of ["text", "image"]) {
+        $(`tab-${other}`).setAttribute("aria-selected", String(other === name));
+        $(`panel-${other}`).hidden = other !== name;
+      }
+      $("result").hidden = true;
+    });
+  }
+
+  // text tab
   text.addEventListener("input", () => { $("count").textContent = text.value.length; });
   document.querySelectorAll("[data-example]").forEach((b) =>
     b.addEventListener("click", () => { text.value = b.dataset.example; text.dispatchEvent(new Event("input")); text.focus(); }));
+
+  // image tab
+  function useImage(blob, name) {
+    image = blob;
+    $("file-label").textContent = `${name} (${(blob.size / 1024).toFixed(0)} KB) — click to choose another`;
+    const preview = $("preview");
+    if (preview.src) URL.revokeObjectURL(preview.src);
+    preview.src = URL.createObjectURL(blob);
+    preview.hidden = false;
+    $("result").hidden = true;
+  }
+  $("file").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) useImage(f, f.name); });
+  document.querySelectorAll("[data-sample]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const res = await fetch(b.dataset.sample);
+      useImage(await res.blob(), b.dataset.sample.split("/").pop());
+    }));
 
   async function refresh() {
     try {
@@ -108,22 +174,20 @@
     $("result").hidden = false;
   }
 
-  $("check").addEventListener("click", async () => {
-    const button = $("check");
+  async function check(button, label, request) {
     button.disabled = true;
     button.textContent = "Checking...";
     const start = performance.now();
     try {
-      const res = await fetch("moderate", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: text.value }),
-      });
+      const res = await request();
       const seconds = ((performance.now() - start) / 1000).toFixed(2) + " s";
       const data = await res.json().catch(() => ({ error: res.statusText || "no response body" }));
       if (res.ok) {
-        show(data.flagged ? "bad" : "ok", data.flagged ? "Flagged" : "Allowed", [
-          ["Category", data.category], ["Reasoning", data.reasoning], ["Policy", data.policy],
-          ["From cache", data.cache_hit ? "yes (no Gemini call)" : "no (real Gemini call)"], ["Time", seconds],
-        ]);
+        const rows = [["Category", data.category], ["Reasoning", data.reasoning]];
+        if ("text_in_image" in data) rows.push(["Text in image", data.text_in_image || "(none)"]);
+        rows.push(["Policy", data.policy],
+                  ["From cache", data.cache_hit ? "yes (no Gemini call)" : "no (real Gemini call)"], ["Time", seconds]);
+        show(data.flagged ? "bad" : "ok", data.flagged ? "Flagged" : "Allowed", rows);
       } else {
         show("err", `Error ${res.status}`, [["Message", data.error || JSON.stringify(data)], ["Time", seconds]]);
       }
@@ -131,9 +195,22 @@
       show("err", "Request failed", [["Message", String(e)]]);
     } finally {
       button.disabled = false;
-      button.textContent = "Check comment";
+      button.textContent = label;
       refresh();
     }
+  }
+
+  $("check-text").addEventListener("click", () =>
+    check($("check-text"), "Check comment", () => fetch("moderate", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: text.value }),
+    })));
+
+  $("check-image").addEventListener("click", () => {
+    if (!image) { show("err", "No image", [["Message", "Choose an image or pick an example first."]]); return; }
+    if (image.size > MAX_IMAGE_BYTES) { show("err", "Too large", [["Message", "The image is larger than 5 MB."]]); return; }
+    const form = new FormData();
+    form.append("image", image, "upload");
+    check($("check-image"), "Check image", () => fetch("moderate-image", { method: "POST", body: form }));
   });
 
   refresh();

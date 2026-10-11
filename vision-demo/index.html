@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SafeSearch Demo</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5d6676; --border: #dde1e8;
+    --accent: #2f5bea; --ok: #1d7a46; --ok-bg: #e5f4ec; --bad: #b42318; --bad-bg: #fdecea;
+    --warn: #8a5a00; --warn-bg: #fff4dc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171d; --card: #1d2129; --text: #e7eaf0; --muted: #9aa3b2; --border: #313744;
+      --accent: #7b9bff; --ok: #6fd39b; --ok-bg: #173325; --bad: #ff8a80; --bad-bg: #3a1c1a;
+      --warn: #f1c46b; --warn-bg: #3a2f17;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { margin: 0; font-size: 1.6rem; }
+  .sub { margin: 4px 0 24px; color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .drop { display: block; padding: 18px; text-align: center; color: var(--muted); cursor: pointer;
+          border: 2px dashed var(--border); border-radius: 8px; }
+  .drop:hover { border-color: var(--accent); }
+  .drop input { display: none; }
+  .preview { display: block; max-width: 100%; max-height: 280px; margin: 12px auto 0; border-radius: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  .row span { color: var(--muted); font-size: 0.9rem; }
+  button { font: inherit; cursor: pointer; border-radius: 8px; }
+  .chip { padding: 4px 10px; font-size: 0.85rem; color: var(--text); background: transparent; border: 1px solid var(--border); }
+  .chip:hover { border-color: var(--accent); }
+  .primary { margin-top: 16px; padding: 10px 22px; border: 0; color: #fff; background: var(--accent); font-weight: 600; }
+  .primary:disabled { opacity: 0.6; cursor: wait; }
+  .verdict { font-size: 1.3rem; font-weight: 700; padding: 6px 12px; border-radius: 8px; display: inline-block; }
+  .verdict.ok { color: var(--ok); background: var(--ok-bg); }
+  .verdict.bad { color: var(--bad); background: var(--bad-bg); }
+  .verdict.err { color: var(--warn); background: var(--warn-bg); }
+  .rule { color: var(--muted); font-size: 0.9rem; margin: 10px 0 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  td { padding: 6px 0; border-bottom: 1px solid var(--border); }
+  td:last-child { text-align: right; font-weight: 600; }
+  .meter { display: inline-block; width: 120px; height: 8px; margin-right: 10px; vertical-align: middle;
+           background: var(--border); border-radius: 4px; overflow: hidden; }
+  .meter i { display: block; height: 100%; background: var(--accent); }
+  .meter i.hot { background: var(--bad); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>SafeSearch Demo</h1>
+  <p class="sub">Google Cloud Vision scores an image for adult, violent, racy, medical and spoof content. A simple rule
+    turns the scores into a decision.</p>
+
+  <div class="card">
+    <label class="drop">
+      <input type="file" id="file" accept="image/jpeg,image/png,image/webp">
+      <span id="file-label">Choose a JPEG, PNG or WebP image (up to 5 MB)</span>
+    </label>
+    <img class="preview" id="preview" alt="Preview of the chosen image" hidden>
+    <div class="row">
+      <span>Try:</span>
+      <button class="chip" data-sample="landscape.png">Landscape</button>
+      <button class="chip" data-sample="insult-text.png">Insult as text</button>
+      <button class="chip" data-sample="rude-gesture.jpg">Rude gesture</button>
+      <button class="chip" data-sample="museum-weapons.jpg">Weapons in a museum</button>
+      <button class="chip" data-sample="handgun.jpg">Handgun</button>
+      <button class="chip" data-sample="handgun-threat.jpg">Handgun + threat</button>
+    </div>
+    <button class="primary" id="check">Check image</button>
+  </div>
+
+  <div class="card" id="result" hidden>
+    <span class="verdict" id="verdict"></span>
+    <p class="rule" id="rule"></p>
+    <table id="scores"></table>
+  </div>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const LEVELS = ["UNKNOWN", "VERY_UNLIKELY", "UNLIKELY", "POSSIBLE", "LIKELY", "VERY_LIKELY"];
+  let image = null;
+
+  function useImage(blob, name) {
+    image = blob;
+    $("file-label").textContent = `${name} (${(blob.size / 1024).toFixed(0)} KB) — click to choose another`;
+    if ($("preview").src) URL.revokeObjectURL($("preview").src);
+    $("preview").src = URL.createObjectURL(blob);
+    $("preview").hidden = false;
+    $("result").hidden = true;
+  }
+  $("file").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) useImage(f, f.name); });
+  document.querySelectorAll("[data-sample]").forEach((b) =>
+    b.addEventListener("click", async () => useImage(await (await fetch(`samples/${b.dataset.sample}`)).blob(), b.dataset.sample)));
+
+  function showError(message) {
+    $("verdict").className = "verdict err";
+    $("verdict").textContent = "Error";
+    $("rule").textContent = message;
+    $("scores").replaceChildren();
+    $("result").hidden = false;
+  }
+
+  $("check").addEventListener("click", async () => {
+    if (!image) return showError("Choose an image or pick an example first.");
+    const button = $("check");
+    button.disabled = true;
+    button.textContent = "Checking...";
+    try {
+      const form = new FormData();
+      form.append("image", image, "upload");
+      const res = await fetch("check", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) return showError(data.error || `HTTP ${res.status}`);
+
+      const blocked = data.decision === "block";
+      $("verdict").className = `verdict ${blocked ? "bad" : "ok"}`;
+      $("verdict").textContent = blocked ? `Block (${data.reasons.join(", ")})` : "Allow";
+      $("rule").textContent = `Rule: ${data.rule}.`;
+      const table = $("scores");
+      table.replaceChildren();
+      for (const [category, level] of Object.entries(data.scores)) {
+        const row = table.insertRow();
+        row.insertCell().textContent = category;
+        const cell = row.insertCell();
+        const meter = document.createElement("span"); meter.className = "meter";
+        const fill = document.createElement("i");
+        fill.style.width = `${(Math.max(LEVELS.indexOf(level), 0) / 5) * 100}%`;
+        if (data.reasons.includes(category)) fill.className = "hot";
+        meter.append(fill);
+        cell.append(meter, document.createTextNode(level.replace("_", " ").toLowerCase()));
+      }
+      $("result").hidden = false;
+    } catch (e) {
+      showError(String(e));
+    } finally {
+      button.disabled = false;
+      button.textContent = "Check image";
+    }
+  });
+</script>
+</body>
+</html>

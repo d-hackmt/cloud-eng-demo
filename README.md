@@ -9,8 +9,10 @@ One small, self-contained Flask service, **ModeraAI** (a content moderation API)
 ```
 cloud-eng-demo/                (https://github.com/d-hackmt/cloud-eng-demo)
 ├── moderaai/                  the service: main.py, Dockerfile (installs with uv), requirements.txt,
-│                              cloudbuild.yaml, .dockerignore, and static/index.html (the web page at /)
+│                              cloudbuild.yaml, .dockerignore, static/index.html (the web page at /)
+│                              and static/samples/ (example images, credits in CREDITS.md)
 │                              (keep this path: the CI/CD trigger and cloudbuild.yaml point at it)
+├── vision-demo/               a separate local app: Cloud Vision SafeSearch scores for an image
 ├── scripts/
 │   ├── load_test.py           fires N concurrent requests (topics 1 and 9)
 │   └── cost_comparison_demo.py  Flash vs Pro tokens, and what caching saves (topic 10)
@@ -41,9 +43,24 @@ cloud-eng-demo/                (https://github.com/d-hackmt/cloud-eng-demo)
 
 ## Try it in a browser
 
-Open https://moderaai-1039893753206.us-central1.run.app: type a comment (or pick an example), press
-**Check comment**, and see the verdict, the reasoning, whether it came from the cache, and how long it took. It's one
-HTML file, `moderaai/static/index.html`, that calls the same `/moderate` API as `curl`.
+Open https://moderaai-1039893753206.us-central1.run.app. The page has two tabs:
+
+- **Text:** type a comment (or pick an example) and see the verdict, the reasoning, whether it came from the cache,
+  and how long it took. Calls `POST /moderate`.
+- **Image:** upload a JPEG, PNG or WebP (up to 5 MB) or pick an example. Gemini judges what the image shows and any
+  text written in it, and shows the text it read. Calls `POST /moderate-image`.
+
+It's one HTML file, `moderaai/static/index.html`, calling the same API as `curl`.
+
+## Image moderation: Gemini vs Cloud Vision SafeSearch
+
+ModeraAI checks images with **Gemini**: it follows the written policy, reads text in the image, and understands
+context (weapons in a museum are fine; a gun with "You're next." written on it is not).
+
+`vision-demo/` is a **separate small local app** for comparison. It uses **Cloud Vision SafeSearch**, which doesn't
+decide anything: it scores five fixed categories (adult, violence, racy, medical, spoof), and the app turns the
+scores into a decision with one rule. It's cheaper and faster, but it doesn't read text or judge context. Run both on
+the same sample images to see the difference: `commands.md`, Extras A and B.
 
 ## Setup
 
@@ -75,7 +92,9 @@ The one real secret in this module is the API Gateway key (topic 9). It belongs 
 | Risk | What's in place |
 |---|---|
 | Anyone with the URL can call the service | Accepted for the demo (`--allow-unauthenticated`); delete the service when done. Topic 9's gateway is the front door with a key. |
-| Huge texts running up the Gemini bill | Texts over 5,000 characters are refused (HTTP 413) |
+| Huge texts or images running up the Gemini bill | Texts over 5,000 characters and images over 5 MB are refused (HTTP 413) |
+| Files that aren't images | Only JPEG, PNG and WebP are accepted, judged by the file's first bytes, not its name (HTTP 415) |
+| Storing people's uploads | Images are never stored; only the verdict is cached, keyed by a hash |
 | A comment that tries to give the model orders ("ignore your rules...") | The text is sent apart from the instructions, and the model is told to judge it, not obey it |
 | Internal errors shown to callers | Callers get `{"error": "moderation failed"}`; the details go to the logs |
 | The app running as root in the container | The Dockerfile switches to a normal user |
@@ -93,7 +112,8 @@ Follow [`commands.md`](commands.md); the order matters:
 6. Topics 6 to 8: `curl` calls against the service, and a temporary 1 ms-timeout revision.
 7. Topic 9: create the gateway (about 11 minutes), then the API key, which is restricted to this API.
 8. Topic 10: `uv run python scripts/cost_comparison_demo.py`.
-9. Teardown, at the end of `commands.md`.
+9. Extras A and B: image moderation with Gemini, and the SafeSearch comparison app.
+10. Teardown, at the end of `commands.md`.
 
 ## What was changed from the course files
 
