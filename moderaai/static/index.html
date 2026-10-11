@@ -36,9 +36,6 @@
   button { font: inherit; cursor: pointer; border-radius: 8px; }
   .chip { padding: 4px 10px; font-size: 0.85rem; color: var(--text); background: transparent; border: 1px solid var(--border); }
   .chip:hover { border-color: var(--accent); }
-  .switches { margin-top: 16px; gap: 16px; font-size: 0.9rem; }
-  .switches label { font-weight: 400; }
-  .hint { color: var(--muted); font-size: 0.8rem; margin: 4px 0 0; }
   .primary { margin-top: 16px; padding: 10px 22px; border: 0; color: #fff; background: var(--accent); font-weight: 600; }
   .primary:disabled { opacity: 0.6; cursor: wait; }
   .verdict { font-size: 1.3rem; font-weight: 700; padding: 6px 12px; border-radius: 8px; display: inline-block; }
@@ -69,12 +66,6 @@
       </div>
       <span class="count"><span id="count">0</span> / 5000</span>
     </div>
-
-    <div class="row switches">
-      <label><input type="checkbox" id="retry"> Simulate a failing Gemini call (retries)</label>
-      <label><input type="checkbox" id="hang"> Simulate a hang (60 s)</label>
-    </div>
-    <p class="hint">The switches only work when the service runs with ENABLE_DEMO_SWITCHES=true.</p>
 
     <button class="primary" id="check">Check comment</button>
   </div>
@@ -118,16 +109,12 @@
   }
 
   $("check").addEventListener("click", async () => {
-    const params = new URLSearchParams();
-    if ($("retry").checked) params.set("simulate_transient_failure", "true");
-    if ($("hang").checked) params.set("simulate_hang", "true");
     const button = $("check");
     button.disabled = true;
     button.textContent = "Checking...";
     const start = performance.now();
     try {
-      const query = params.toString();
-      const res = await fetch("moderate" + (query ? "?" + query : ""), {
+      const res = await fetch("moderate", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: text.value }),
       });
       const seconds = ((performance.now() - start) / 1000).toFixed(2) + " s";

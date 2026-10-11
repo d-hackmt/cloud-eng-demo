@@ -142,14 +142,15 @@ common problems, which are a repeated bill, a hiccup, and a bad release.
 
 ### Changes after the run (2026-10-11)
 
-These were made after the teardown. They were tested locally (tests with stand-ins for Firestore and Gemini, real Gemini
-calls, the image built and run with Docker), but **not yet deployed to Cloud Run**.
+These were made after the teardown, then deployed to Cloud Run (from source and through Cloud Build) and tested there.
 
 | Change | Why |
 |---|---|
 | The Dockerfile installs packages with **uv** (pinned 0.8.14) and runs the app as a normal user | faster builds; no root in the container |
 | `cloudbuild.yaml`'s deploy sets the service account and every env var | fixes problem 8 for CI/CD: a push can no longer ship leftover settings |
-| The failure switches need `ENABLE_DEMO_SWITCHES=true` | a real deploy can't be made to hang by a stranger |
+| A simple web page at `/` | try the service in a browser, without `curl` |
+| The failure switches (`?simulate_transient_failure`, `?simulate_hang`) removed | anyone could use them on the public service; topics 7 and 8 now use a temporary 1 ms-timeout revision, which shows real retries and a real timeout |
+| The Windows `.bat` scripts and the teaching plan removed | replaced by `commands.md`; the `.bat` files were broken anyway (old paths, `--tag=v2`) |
 | Texts over 5,000 characters get a 413; a body that isn't a JSON object gets a 400 instead of a 500 | caps the cost of one request; a JSON list used to crash the handler |
 | The comment is sent to Gemini apart from the instructions | a comment can't easily give the model orders; a test "ignore your rules" comment was flagged, not obeyed |
 | A failed moderation returns `{"error": "moderation failed"}`, with the details only in the logs | internal errors aren't shown to callers |
@@ -158,17 +159,17 @@ calls, the image built and run with Docker), but **not yet deployed to Cloud Run
 
 ## See it, and question it
 
-The service was live at `https://moderaai-1039893753206.us-central1.run.app` during the run and was **deleted on
-2026-09-20** (teardown is at the end of `commands.md`), so these commands no longer work. To try it again, redeploy
-with the steps in `commands.md` (about 5 minutes for topics 1 and 2); the same commands then apply:
+The service was deleted after the first run (2026-09-20) and deployed again on 2026-10-11. While it is up, open
+https://moderaai-1039893753206.us-central1.run.app in a browser, or:
 
 ```bash
-curl https://<your-service-url>/health
-curl -X POST https://<your-service-url>/moderate -H "Content-Type: application/json" \
+curl https://moderaai-1039893753206.us-central1.run.app/health
+curl -X POST https://moderaai-1039893753206.us-central1.run.app/moderate -H "Content-Type: application/json" \
   -d '{"text": "Your comment here"}'
 ```
 
-Try the same text twice (`cache_hit`), or add `?simulate_transient_failure=true` or `?simulate_hang=true`.
+Try the same text twice to see `cache_hit: true`. If it has been torn down again, redeploy with the steps in
+`commands.md` (a few minutes for topics 1 and 2).
 
 ## Where to watch it in the Google Cloud Console
 
@@ -204,8 +205,8 @@ line). They are empty once the resources are deleted.
 - **The build source.** `gcloud builds submit` from the repo root uploads the whole repo; check what goes with
   `gcloud meta list-files-for-upload .` first. `.env` and tokens are excluded by `.gitignore`.
 - **Keys in logs.** The gateway's log entry has the raw API key in `jsonPayload.api_key`. Leave it out of queries.
-- **Line endings.** `.env`, `.env.example` and the requirements files need Unix (LF) line endings (they have them
-  now); leave the `.bat` files with Windows (CRLF) endings.
+- **Line endings.** `.env`, `.env.example` and the requirements files need Unix (LF) line endings; `.gitattributes`
+  keeps every file LF.
 
 ## Links
 

@@ -36,7 +36,6 @@ paths:
       responses:
         "200":
           description: Moderation result
-      parameters: []
   /health:
     get:
       summary: Health check

@@ -39,29 +39,24 @@ from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponenti
 # 3 attempts, waiting 1 s then 2 s; before_sleep_log writes one log line per retry
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8),
        before_sleep=before_sleep_log(logger, logging.WARNING))
-def call_gemini(text, simulate_transient_failure):
+def call_gemini(text):
     return client.models.generate_content(...)
 ```
 
-```bash
-# The built-in switch that fails the first two attempts on purpose
-curl -w "\nTime: %{time_total}s\n" -X POST "https://moderaai-1039893753206.us-central1.run.app/moderate?simulate_transient_failure=true" \
-  -H "Content-Type: application/json" -d '{"text": "retry demo text"}'
-```
-
-The switch only works when the service is deployed with `ENABLE_DEMO_SWITCHES=true` (the demo deploys set it). Left
-off, the parameter is ignored, so nobody can use it on a real service.
-
 ## How We Test It
 
-`?simulate_transient_failure=true` makes the call fail the first two attempts on purpose and succeed on the third — deliberately engineered, not left to chance. The caller still gets a clean `200 OK` with a real verdict; it just takes longer (**6.4 s** against 2.4 s normally on our run: the 1 s and 2 s waits plus the extra attempts). The logs show each retry:
+Make Gemini calls fail on purpose, without touching real users: deploy a temporary revision whose Gemini time limit is 1 ms (so every call times out), at 0% traffic with its own address, and call it. The commands are in [`commands.md`](../commands.md), topics 7 and 8 (one demo covers both).
+
+The logs then show the retry strategy at work: two retries, after waiting 1 s and then 2 s, before the service gives up:
 
 ```bash
 gcloud logging read 'resource.type=cloud_run_revision AND resource.labels.service_name=moderaai AND textPayload:"Retrying"' \
-  --project=gcp-fde-project --limit=10 --order=asc --format="value(timestamp,textPayload)"
-# -> WARNING:moderaai:Retrying main.call_gemini in 1 seconds as it raised ConnectionError: Simulated transient failure (attempt 1).
-# -> WARNING:moderaai:Retrying main.call_gemini in 2 seconds as it raised ConnectionError: Simulated transient failure (attempt 2).
+  --project=gcp-fde-project --limit=10 --freshness=15m --order=asc --format="value(timestamp,textPayload)"
+# -> WARNING:moderaai:Retrying main.call_gemini in 1 seconds as it raised ConnectTimeout: ... The handshake operation timed out.
+# -> WARNING:moderaai:Retrying main.call_gemini in 2 seconds as it raised ConnectTimeout: ... The handshake operation timed out.
 ```
+
+Here every attempt fails, so the caller gets a clean error after the third one. With a real, brief hiccup, the second or third attempt succeeds and the caller just sees a slightly slower answer.
 
 ## Common Pitfalls
 
@@ -73,4 +68,4 @@ gcloud logging read 'resource.type=cloud_run_revision AND resource.labels.servic
 
 1. What's the difference between a transient and a permanent failure, and why does that distinction matter for retries?
 2. Why does the wait time increase between each retry attempt instead of staying constant?
-3. In the demo, why does the caller's final response look identical to a request that never failed at all?
+3. If the first attempt fails but the second succeeds, what does the caller see?

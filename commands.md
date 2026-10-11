@@ -4,7 +4,7 @@ Every step of this module as copy-paste commands with the real values filled in.
 The original run was on 2026-09-20; the results it recorded are kept as `# ->` comments.
 
 **Shell.** Bash. On Windows use **Git Bash** (it comes with Git for Windows); macOS, Linux and Cloud Shell work as
-they are. The Windows `.bat` originals are in [`bat-files/`](bat-files/) for reference only.
+they are.
 
 **Run each topic in one terminal window.** A few commands save a value in a variable (like `$V1_REVISION`) that a
 later command in the same topic uses. Google generates some names itself (revision names, the gateway's address,
@@ -38,7 +38,6 @@ The original 2026-09-20 run used a different repo (`AnjaniMalhotra/gcp-modules`,
 ```bash
 gcloud --version        # Google Cloud CLI
 uv --version            # Python package manager (install: https://docs.astral.sh/uv/getting-started/installation/)
-docker --version        # only for the optional local container run below
 
 gcloud auth login
 gcloud config set project gcp-fde-project
@@ -67,7 +66,6 @@ from the example and fill in the values (skip the first two lines if `.env` alre
 ```bash
 cp .env.example .env
 sed -i.bak -e 's|^PROJECT_ID=.*|PROJECT_ID=gcp-fde-project|' \
-  -e 's|^GITHUB_USERNAME=.*|GITHUB_USERNAME=d-hackmt|' \
   -e 's|^SERVICE_URL=.*|SERVICE_URL=https://moderaai-1039893753206.us-central1.run.app|' .env && rm .env.bak
 
 set -a && source .env && set +a        # loads .env into this terminal; repeat in every new terminal
@@ -75,8 +73,8 @@ set -a && source .env && set +a        # loads .env into this terminal; repeat i
 
 ### Python environment (uv)
 
-One virtual environment for the scripts and for running the service locally. `uv run` always uses this `.venv`, so
-the same command works on Windows, macOS and Linux:
+One virtual environment for the local scripts (the load test, the cost demo and the Firestore check in topic 6).
+`uv run` always uses this `.venv`, so the same command works on Windows, macOS and Linux:
 
 ```bash
 uv venv --python 3.12 .venv
@@ -116,35 +114,6 @@ The service has **no secrets**. It reaches Gemini and Firestore as its service a
 no password or key to store. Its settings (`PROJECT_ID`, `MODERATION_POLICY`, ...) are plain configuration, passed
 with `--set-env-vars` at deploy time. Secret Manager is for real secrets; use it the day the service needs one, for
 example a third-party API key. Settings are never baked into the image (`moderaai/.dockerignore` keeps `.env` out).
-For a local container run, the same `.env` is passed in at run time with `--env-file`, as shown next.
-
-### Optional: run the container on your laptop
-
-Needs Docker running and the setup above (Firestore must exist for `/moderate`). Your own Google login is mounted in
-read-only, so the container can call Gemini and Firestore as you:
-
-```bash
-docker build -t moderaai:local moderaai
-
-# Windows (Git Bash). MSYS_NO_PATHCONV stops Git Bash from rewriting the /tmp paths.
-MSYS_NO_PATHCONV=1 docker run -d --rm --name moderaai-local -p 8080:8080 --env-file .env \
-  -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/adc.json \
-  -v "$APPDATA/gcloud/application_default_credentials.json:/tmp/adc.json:ro" moderaai:local
-
-# macOS / Linux: the same, with the login file at ~/.config/gcloud/
-# docker run -d --rm --name moderaai-local -p 8080:8080 --env-file .env \
-#   -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/adc.json \
-#   -v "$HOME/.config/gcloud/application_default_credentials.json:/tmp/adc.json:ro" moderaai:local
-
-curl http://localhost:8080/health
-# -> {"policy":"standard","service":"moderaai","status":"ok"}
-curl -X POST http://localhost:8080/moderate -H "Content-Type: application/json" -d '{"text": "Great article, thanks for sharing!"}'
-
-# or use the web page: open http://localhost:8080 in a browser
-
-docker logs -f moderaai-local      # watch the logs (Ctrl+C to stop watching)
-docker stop moderaai-local
-```
 
 ---
 
@@ -156,7 +125,7 @@ Deploy v1. Takes about 3 minutes, including the image build:
 gcloud run deploy moderaai --source moderaai --project=gcp-fde-project --region=us-central1 \
   --allow-unauthenticated \
   --service-account=moderaai-sa@gcp-fde-project.iam.gserviceaccount.com \
-  --set-env-vars=PROJECT_ID=gcp-fde-project,LOCATION=us-central1,MODERATION_POLICY=standard,MODEL_NAME=gemini-2.5-flash,GEMINI_TIMEOUT_MS=10000,CACHE_TTL_SECONDS=3600,ENABLE_DEMO_SWITCHES=true \
+  --set-env-vars=PROJECT_ID=gcp-fde-project,LOCATION=us-central1,MODERATION_POLICY=standard,MODEL_NAME=gemini-2.5-flash,GEMINI_TIMEOUT_MS=10000,CACHE_TTL_SECONDS=3600 \
   --max-instances=10 --timeout=30 --quiet
 # -> Service URL: https://moderaai-1039893753206.us-central1.run.app
 ```
@@ -179,7 +148,8 @@ The same checks in a browser: open https://moderaai-1039893753206.us-central1.ru
 ### Load test, and count the instances
 
 Each run: note the start time, fire 50 requests at once, then count which instances served them. The request logs
-take up to a minute to appear, so wait a moment before the count. The Console's instance graph lags by minutes.
+can take 1 to 2 minutes to appear: if the count prints nothing, run the `gcloud logging read` line again a minute
+later. The Console's instance graph lags by minutes.
 
 ```bash
 # Run 1: Cloud Run's default concurrency (80 requests per instance)
@@ -251,7 +221,7 @@ gcloud builds list --project=gcp-fde-project --limit=3
 gcloud artifacts docker images list us-central1-docker.pkg.dev/gcp-fde-project/moderaai-repo --include-tags
 # -> moderaai   v1.0.0
 gcloud run services describe moderaai --region=us-central1 --project=gcp-fde-project
-# -> concurrency 5, max 10 instances, moderaai-sa, 7 env vars
+# -> concurrency 5 (from topic 1), max 10 instances, 30 s timeout, moderaai-sa, 6 env vars
 gcloud run services get-iam-policy moderaai --region=us-central1 --project=gcp-fde-project
 # -> allUsers has roles/run.invoker
 curl https://moderaai-1039893753206.us-central1.run.app/health
@@ -342,7 +312,7 @@ gcloud builds submit moderaai --project=gcp-fde-project \
 gcloud run deploy moderaai --project=gcp-fde-project --region=us-central1 \
   --image=us-central1-docker.pkg.dev/gcp-fde-project/moderaai-repo/moderaai:v2.0.0 \
   --service-account=moderaai-sa@gcp-fde-project.iam.gserviceaccount.com \
-  --set-env-vars=PROJECT_ID=gcp-fde-project,LOCATION=us-central1,MODERATION_POLICY=strict,MODEL_NAME=gemini-2.5-flash,GEMINI_TIMEOUT_MS=10000,CACHE_TTL_SECONDS=3600,ENABLE_DEMO_SWITCHES=true \
+  --set-env-vars=PROJECT_ID=gcp-fde-project,LOCATION=us-central1,MODERATION_POLICY=strict,MODEL_NAME=gemini-2.5-flash,GEMINI_TIMEOUT_MS=10000,CACHE_TTL_SECONDS=3600 \
   --no-traffic --tag=v2-0-0 --quiet
 # -> 0 percent of traffic
 # -> reachable directly at https://v2-0-0---moderaai-mewtpyvzkq-uc.a.run.app
@@ -436,43 +406,11 @@ for d in firestore.Client(project='gcp-fde-project').collection('moderation_cach
 
 ---
 
-## Topic 7 — Retry strategies
+## Topics 7 and 8 — Retries and timeouts (one demo)
 
-`?simulate_transient_failure=true` makes the Gemini call fail twice, then succeed. It works only because the service
-was deployed with `ENABLE_DEMO_SWITCHES=true`. The service retries with `tenacity`: 3 attempts, waiting 1 s, then 2 s.
-
-```bash
-curl -w "\nTime: %{time_total}s\n" -X POST "https://moderaai-1039893753206.us-central1.run.app/moderate?simulate_transient_failure=true" \
-  -H "Content-Type: application/json" -d '{"text": "retry demo text"}'
-# -> 200 after 6.35 s, against 2.36 s for a normal request: about 3 s of waiting between attempts
-```
-
-Each retry writes one log line:
-
-```bash
-gcloud logging read 'resource.type=cloud_run_revision AND resource.labels.service_name=moderaai AND textPayload:"Retrying"' \
-  --project=gcp-fde-project --limit=10 --order=asc --format="value(timestamp,textPayload)"
-# -> WARNING:moderaai:Retrying main.call_gemini in 1 seconds as it raised ConnectionError: Simulated transient failure (attempt 1).
-# -> WARNING:moderaai:Retrying main.call_gemini in 2 seconds as it raised ConnectionError: Simulated transient failure (attempt 2).
-```
-
----
-
-## Topic 8 — Timeouts
-
-`?simulate_hang=true` makes the handler sleep 60 seconds (also needs `ENABLE_DEMO_SWITCHES=true`):
-
-```bash
-curl -w "\nHTTP %{http_code} after %{time_total}s\n" -X POST "https://moderaai-1039893753206.us-central1.run.app/moderate?simulate_hang=true" \
-  -H "Content-Type: application/json" -d '{"text": "timeout demo text"}'
-# -> HTTP 504 after 30.4 s, body "upstream request timeout"
-```
-
-That is **Cloud Run's** request timeout (`--timeout=30`) cutting it off. The app's own 10-second Gemini timeout never
-comes into play, because the switch sleeps before Gemini is called.
-
-To test the app's Gemini timeout for real, deploy a temporary revision with a 1 ms timeout, at 0% traffic with its own
-address, call it, then put everything back:
+The service gives every Gemini call a time limit (`GEMINI_TIMEOUT_MS`, 10 s) and retries a failed call with
+`tenacity`: 3 attempts, waiting 1 s, then 2 s. To see both, deploy a temporary revision whose Gemini time limit is
+1 ms, so every call times out. It gets 0% of traffic and its own address, so real users never reach it:
 
 ```bash
 gcloud run services update moderaai --region=us-central1 --project=gcp-fde-project \
@@ -480,21 +418,34 @@ gcloud run services update moderaai --region=us-central1 --project=gcp-fde-proje
 
 curl -w "\nHTTP %{http_code} after %{time_total}s\n" -X POST https://timeout-test---moderaai-mewtpyvzkq-uc.a.run.app/moderate \
   -H "Content-Type: application/json" -d '{"text": "gemini timeout test"}'
-# -> {"error":"moderation failed"}  HTTP 502 (about 14 s including a cold start)
+# -> {"error":"moderation failed"}  HTTP 502 after a few seconds: 3 attempts, each timed out, with 1 s and 2 s waits
+```
 
-# the caller gets only a plain message; the real error is in the logs
-gcloud logging read 'resource.type=cloud_run_revision AND resource.labels.service_name=moderaai AND (textPayload:"moderation failed" OR textPayload:"Timeout")' \
-  --project=gcp-fde-project --limit=10 --format="value(timestamp,textPayload)"
-# -> ... ConnectTimeout ... / ERROR:moderaai:moderation failed
+The caller only gets a plain message. The logs show each retry (topic 7) and the final failure (topic 8):
 
-# restore, so the 1 ms setting does not leak into later deploys
+```bash
+gcloud logging read 'resource.type=cloud_run_revision AND resource.labels.service_name=moderaai AND (textPayload:"Retrying" OR textPayload:"moderation failed")' \
+  --project=gcp-fde-project --limit=10 --freshness=15m --order=asc --format="value(timestamp,textPayload)"
+# -> WARNING:moderaai:Retrying main.call_gemini in 1 seconds as it raised ConnectTimeout: ... The handshake operation timed out.
+# -> WARNING:moderaai:Retrying main.call_gemini in 2 seconds as it raised ConnectTimeout: ... The handshake operation timed out.
+# -> ERROR:moderaai:moderation failed
+# (logs can take a minute to appear; run it again if it prints nothing)
+```
+
+Tested on 2026-10-11: HTTP 502 after 11.5 s (including the new revision's cold start), with exactly these three log lines.
+
+Put everything back, so the 1 ms setting does not leak into later deploys:
+
+```bash
 gcloud run services update moderaai --region=us-central1 --project=gcp-fde-project \
   --update-env-vars=GEMINI_TIMEOUT_MS=10000 --no-traffic --quiet
 gcloud run services update-traffic moderaai --region=us-central1 --project=gcp-fde-project --to-latest --remove-tags=timeout-test
+curl https://moderaai-1039893753206.us-central1.run.app/health
+# -> {"policy":"standard","service":"moderaai","status":"ok"}
 ```
 
-Two safety nets: the app times out the Gemini call and returns a clean 502 after its retries, and Cloud Run cuts
-anything that runs past 30 seconds with a 504.
+The second safety net is Cloud Run's own request limit, `--timeout=30` (set in the topic 1 deploy): anything that
+runs past 30 seconds is cut off with a 504, whatever the code does.
 
 ---
 
@@ -709,13 +660,6 @@ done
 
 The Cloud Build GitHub App stays installed on the GitHub account until you remove it at
 https://github.com/settings/installations.
-
-The local image, if you built one:
-
-```bash
-docker rmi moderaai:local
-```
-
 ### Verify it is gone
 
 Check every list comes back empty, rather than trusting that `delete` worked:

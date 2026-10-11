@@ -1,4 +1,2 @@
 # Store text files with Unix (LF) line endings, so `source .env` and the container work on any OS.
 * text=auto eol=lf
-# Windows batch files need Windows (CRLF) line endings.
-*.bat text eol=crlf

@@ -36,26 +36,20 @@ client = genai.Client(vertexai=True, http_options=HttpOptions(timeout=10000))  #
 
 ```bash
 # Cloud Run's own backstop timeout is set at deploy time: --timeout=30 (see topic 1's deploy)
-
-# The built-in switch that sleeps for 60 seconds (needs ENABLE_DEMO_SWITCHES=true, like topic 7's switch)
-curl -w "\nHTTP %{http_code} after %{time_total}s\n" -X POST "https://moderaai-1039893753206.us-central1.run.app/moderate?simulate_hang=true" \
-  -H "Content-Type: application/json" -d '{"text": "timeout demo text"}'
 ```
 
 ## How We Test It
 
-There are two safety nets, and each is tested on its own (full commands in [`commands.md`](../commands.md), topic 8):
+There are two safety nets:
 
-1. **Cloud Run's timeout.** `?simulate_hang=true` sleeps for 60 seconds. On our run the request was cut off at **30.4 s** with an HTTP **504**: Cloud Run's 30-second limit. The app's own Gemini timeout plays no part here, because the switch sleeps *before* Gemini is called.
-2. **The app's Gemini timeout.** To test it, a temporary revision is deployed with the timeout set to 1 ms, at 0% traffic with its own address. Calling it gives a clean HTTP **502** `{"error": "moderation failed"}` after the retries. The real error (a connection timeout) goes to the logs, not to the caller. Then the setting is put back to 10 seconds.
+1. **The app's Gemini timeout (tested).** A temporary revision is deployed with the timeout set to 1 ms, at 0% traffic with its own address. Calling it gives a clean HTTP **502** `{"error": "moderation failed"}` after the retries, instead of a request that hangs. The real error (a connection timeout) goes to the logs, not to the caller. Then the setting is put back to 10 seconds. Full commands in [`commands.md`](../commands.md), topics 7 and 8.
+2. **Cloud Run's timeout (a setting).** `--timeout=30` makes Cloud Run cut off any request that runs past 30 seconds with an HTTP **504**, whatever the code does. On the original run, a request made to stall on purpose was cut off at 30.4 s.
 
-Cloud Run's `--timeout` is the backstop that always holds, because the platform enforces it, whatever the code does.
+Cloud Run's `--timeout` is the backstop that always holds, because the platform enforces it.
 
 ## Common Pitfalls
 
-- Relying only on the timeout in your code and never setting Cloud Run's own `--timeout` — the platform's limit catches the hangs your code doesn't
-- Thinking the hang switch tests the app's timeout: it's cut by Cloud Run's, because it never reaches the Gemini call
-- Setting a timeout so short that normal, healthy Gemini calls get cut off — tune it against real observed latency, not a guess
+- Relying only on the timeout in your code and never setting Cloud Run's own `--timeout` — the platform's limit catches the hangs your code doesn't- Setting a timeout so short that normal, healthy Gemini calls get cut off — tune it against real observed latency, not a guess
 - Confusing a timeout with a retry — a timed-out call isn't automatically retried unless you explicitly combine both (which this module's `main.py` does)
 
 ## Quick Recap

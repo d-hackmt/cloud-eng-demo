@@ -37,7 +37,7 @@ def fire_one(url: str, index: int, api_key: str | None):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", default=os.environ.get("SERVICE_URL", "http://localhost:8080"))
+    parser.add_argument("--url", default=os.environ.get("SERVICE_URL", "https://moderaai-1039893753206.us-central1.run.app"))
     parser.add_argument("--requests", type=int, default=50)
     parser.add_argument("--workers", type=int, default=50)
     parser.add_argument("--api-key", default=os.environ.get("API_KEY"), help="Required when --url points at the API Gateway URL (topic 9)")

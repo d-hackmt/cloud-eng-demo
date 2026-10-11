@@ -7,14 +7,8 @@
    reduced the number of REAL Gemini calls below the number of incoming
    requests.
 
-Prices below are illustrative per-1K-token estimates for teaching purposes -
-always check the current Vertex AI pricing page before quoting a real number
-to students. The model IDs below are also worth re-checking at build time -
-Gemini model IDs retire on a schedule (gemini-2.0-flash-001 was discontinued
-June 1, 2026; there was never a stable "gemini-2.0-pro-001" GA release at
-all - Gemini 2.0 Pro only ever shipped as an experimental preview). Check
-https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini
-for the current GA lineup before recording this module.
+The prices are illustrative, not Google's real price list: read the ratio, not
+the dollars. Model IDs retire on a schedule, so check they are still current.
 """
 
 import os
@@ -24,7 +18,7 @@ from google import genai
 
 PROJECT_ID = os.environ["PROJECT_ID"]
 LOCATION = os.environ.get("LOCATION", "us-central1")
-SERVICE_URL = os.environ.get("SERVICE_URL", "http://localhost:8080")
+SERVICE_URL = os.environ.get("SERVICE_URL", "https://moderaai-1039893753206.us-central1.run.app")
 
 # Illustrative estimated $ per 1K tokens (input+output blended) - for teaching only.
 ESTIMATED_COST_PER_1K_TOKENS = {

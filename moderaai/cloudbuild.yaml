@@ -23,7 +23,7 @@ steps:
       # Set every setting explicitly. Otherwise the deploy keeps whatever the service had last
       # (for example MODERATION_POLICY=strict left behind by the topic 5 rollback).
       - '--service-account=moderaai-sa@${PROJECT_ID}.iam.gserviceaccount.com'
-      - '--set-env-vars=PROJECT_ID=${PROJECT_ID},LOCATION=${_REGION},MODERATION_POLICY=standard,MODEL_NAME=gemini-2.5-flash,GEMINI_TIMEOUT_MS=10000,CACHE_TTL_SECONDS=3600,ENABLE_DEMO_SWITCHES=true'
+      - '--set-env-vars=PROJECT_ID=${PROJECT_ID},LOCATION=${_REGION},MODERATION_POLICY=standard,MODEL_NAME=gemini-2.5-flash,GEMINI_TIMEOUT_MS=10000,CACHE_TTL_SECONDS=3600'
       - '--max-instances=10'
       - '--timeout=30'
 substitutions:

@@ -32,8 +32,8 @@ That's the entire product — one URL, send text, get a verdict, powered by one 
 | 4 | [Versioning](04-versioning.md) | Knowing exactly what's live | Deploy `v2.0.0` alongside `v1.0.0`, call both by their distinct URLs/revisions |
 | 5 | [Rollbacks](05-rollbacks.md) | Undoing a bad deploy | Prove v2 over-flags safe text, then roll live traffic back to v1 in one command |
 | 6 | [Caching](06-caching.md) | Not re-paying for the same question | Call the same text twice, compare response time and `cache_hit` field |
-| 7 | [Retry Strategies](07-retry-strategies.md) | Surviving a transient hiccup | A `?simulate_transient_failure=true` switch fails twice then succeeds — watch the retry log it |
-| 8 | [Timeouts](08-timeouts.md) | Never hanging forever | A `?simulate_hang=true` switch deliberately stalls — watch the timeout cut it off |
+| 7 | [Retry Strategies](07-retry-strategies.md) | Surviving a transient hiccup | A temporary revision whose Gemini calls always time out — watch the logs show each retry |
+| 8 | [Timeouts](08-timeouts.md) | Never hanging forever | The same revision: the timed-out call ends in a clean 502 instead of hanging |
 | 9 | [Rate Limiting](09-rate-limiting.md) | Surviving abuse | Fire requests past API Gateway's quota and expect a 429 (set up and counted, but no 429 seen on our run: see the topic) |
 | 10 | [Cost Optimization](10-cost-optimization.md) | Not a surprise bill | Compare Flash vs. Pro cost, then prove caching cuts real Gemini calls with a request counter |
 

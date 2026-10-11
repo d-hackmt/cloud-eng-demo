@@ -38,7 +38,7 @@ gcloud builds submit moderaai --project=gcp-fde-project \
 gcloud run deploy moderaai --project=gcp-fde-project --region=us-central1 \
   --image=us-central1-docker.pkg.dev/gcp-fde-project/moderaai-repo/moderaai:v2.0.0 \
   --service-account=moderaai-sa@gcp-fde-project.iam.gserviceaccount.com \
-  --set-env-vars=PROJECT_ID=gcp-fde-project,LOCATION=us-central1,MODERATION_POLICY=strict,MODEL_NAME=gemini-2.5-flash,GEMINI_TIMEOUT_MS=10000,CACHE_TTL_SECONDS=3600,ENABLE_DEMO_SWITCHES=true \
+  --set-env-vars=PROJECT_ID=gcp-fde-project,LOCATION=us-central1,MODERATION_POLICY=strict,MODEL_NAME=gemini-2.5-flash,GEMINI_TIMEOUT_MS=10000,CACHE_TTL_SECONDS=3600 \
   --no-traffic --tag=v2-0-0 --quiet
 
 # List every revision that exists

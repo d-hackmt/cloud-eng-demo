@@ -1,10 +1,7 @@
 """ModeraAI — a tiny content moderation API used as the demo service for Module 17.
 
-Hardened with: Firestore-backed caching, tenacity retries, a configurable
-timeout, and two deliberate failure switches (simulate_transient_failure,
-simulate_hang) used to demo retries/timeouts on demand instead of hoping
-for real failures during a live session. The switches only work when the
-service is deployed with ENABLE_DEMO_SWITCHES=true.
+Hardened with: Firestore-backed caching, tenacity retries, and a configurable
+Gemini timeout (GEMINI_TIMEOUT_MS). Serves a simple web page at /.
 """
 
 import hashlib
@@ -27,16 +24,10 @@ app = Flask(__name__)
 PROJECT_ID = os.environ["PROJECT_ID"]
 LOCATION = os.environ.get("LOCATION", "us-central1")
 MODERATION_POLICY = os.environ.get("MODERATION_POLICY", "standard")  # "standard" or "strict"
-# NOTE: Gemini model IDs retire on a schedule (Gemini 2.0 Flash was
-# discontinued June 1, 2026). Check https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/gemini
-# for the current GA model before teaching/recording this module, and update
-# this default (and .env.example, cloudbuild.yaml, commands.md) if it has changed.
+# Gemini model IDs retire on a schedule: check this one is still current before deploying.
 MODEL_NAME = os.environ.get("MODEL_NAME", "gemini-2.5-flash")
 GEMINI_TIMEOUT_MS = int(os.environ.get("GEMINI_TIMEOUT_MS", "10000"))
 CACHE_TTL_SECONDS = int(os.environ.get("CACHE_TTL_SECONDS", "3600"))
-# The failure switches (?simulate_hang, ?simulate_transient_failure) only work when this is "true".
-# Off by default, so a deploy that forgets it can't be made to hang by any stranger with the URL.
-ENABLE_DEMO_SWITCHES = os.environ.get("ENABLE_DEMO_SWITCHES", "false").lower() == "true"
 # Caps how much text one request can send to Gemini (and so what one request can cost).
 MAX_TEXT_CHARS = int(os.environ.get("MAX_TEXT_CHARS", "5000"))
 
@@ -48,9 +39,8 @@ client = genai.Client(
 )
 db = firestore.Client(project=PROJECT_ID)
 
-# In-memory counters — reset on cold start, good enough for live demo purposes.
+# In-memory counter — resets on cold start, good enough for live demo purposes.
 gemini_call_count = 0
-_transient_attempt_tracker = {}
 
 
 class ModerationResult(BaseModel):
@@ -88,17 +78,8 @@ def build_instructions() -> str:
 # before_sleep_log writes one line per retry, so the attempts show up in Cloud Run's logs.
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8),
        before_sleep=before_sleep_log(logger, logging.WARNING))
-def call_gemini(text: str, simulate_transient_failure: bool) -> ModerationResult:
+def call_gemini(text: str) -> ModerationResult:
     global gemini_call_count
-
-    if simulate_transient_failure:
-        key = text
-        attempts = _transient_attempt_tracker.get(key, 0)
-        _transient_attempt_tracker[key] = attempts + 1
-        if attempts < 2:
-            raise ConnectionError("Simulated transient failure (attempt %d)" % (attempts + 1))
-        _transient_attempt_tracker.pop(key, None)
-
     gemini_call_count += 1
     response = client.models.generate_content(
         model=MODEL_NAME,
@@ -133,16 +114,6 @@ def moderate():
     if len(text) > MAX_TEXT_CHARS:
         return jsonify({"error": f"field 'text' is longer than {MAX_TEXT_CHARS} characters"}), 413
 
-    simulate_hang = ENABLE_DEMO_SWITCHES and request.args.get("simulate_hang", "false").lower() == "true"
-    simulate_transient_failure = (
-        ENABLE_DEMO_SWITCHES and request.args.get("simulate_transient_failure", "false").lower() == "true"
-    )
-
-    if simulate_hang:
-        # Deliberately stall well past any reasonable timeout, so the
-        # timeout topic has something real to cut off.
-        time.sleep(60)
-
     text_hash = content_hash(text)
     doc_ref = db.collection("moderation_cache").document(text_hash)
     doc = doc_ref.get()
@@ -160,7 +131,7 @@ def moderate():
             }), 200
 
     try:
-        result = call_gemini(text, simulate_transient_failure)
+        result = call_gemini(text)
     except Exception:
         # The full error goes to Cloud Run's logs; the caller gets a plain message, not our internals.
         logger.exception("moderation failed")

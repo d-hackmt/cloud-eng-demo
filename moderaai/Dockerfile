@@ -19,7 +19,6 @@ USER appuser
 
 # Print logs straight away, so they show up in Cloud Run's logs without delay.
 ENV PYTHONUNBUFFERED=1
-ENV PORT=8080
 EXPOSE 8080
 
 # gunicorn is the production web server (Flask's own server is for development only).
