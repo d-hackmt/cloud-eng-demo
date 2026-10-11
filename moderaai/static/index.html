@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ModeraAI</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5d6676; --border: #dde1e8;
+    --accent: #2f5bea; --ok: #1d7a46; --ok-bg: #e5f4ec; --bad: #b42318; --bad-bg: #fdecea;
+    --warn: #8a5a00; --warn-bg: #fff4dc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171d; --card: #1d2129; --text: #e7eaf0; --muted: #9aa3b2; --border: #313744;
+      --accent: #7b9bff; --ok: #6fd39b; --ok-bg: #173325; --bad: #ff8a80; --bad-bg: #3a1c1a;
+      --warn: #f1c46b; --warn-bg: #3a2f17;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { margin: 0; font-size: 1.6rem; }
+  .sub { margin: 4px 0 24px; color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  label { font-weight: 600; }
+  textarea { width: 100%; min-height: 120px; margin-top: 8px; padding: 12px; resize: vertical; font: inherit;
+             color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+  textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .between { justify-content: space-between; margin-top: 6px; }
+  .count { color: var(--muted); font-size: 0.85rem; }
+  .examples { margin-top: 12px; }
+  .examples span { color: var(--muted); font-size: 0.9rem; }
+  button { font: inherit; cursor: pointer; border-radius: 8px; }
+  .chip { padding: 4px 10px; font-size: 0.85rem; color: var(--text); background: transparent; border: 1px solid var(--border); }
+  .chip:hover { border-color: var(--accent); }
+  .switches { margin-top: 16px; gap: 16px; font-size: 0.9rem; }
+  .switches label { font-weight: 400; }
+  .hint { color: var(--muted); font-size: 0.8rem; margin: 4px 0 0; }
+  .primary { margin-top: 16px; padding: 10px 22px; border: 0; color: #fff; background: var(--accent); font-weight: 600; }
+  .primary:disabled { opacity: 0.6; cursor: wait; }
+  .verdict { font-size: 1.3rem; font-weight: 700; padding: 6px 12px; border-radius: 8px; display: inline-block; }
+  .verdict.ok { color: var(--ok); background: var(--ok-bg); }
+  .verdict.bad { color: var(--bad); background: var(--bad-bg); }
+  .verdict.err { color: var(--warn); background: var(--warn-bg); }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 16px 0 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  .stats { color: var(--muted); font-size: 0.9rem; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>ModeraAI</h1>
+  <p class="sub">Paste a comment and check whether it should be blocked. <span id="policy"></span></p>
+
+  <div class="card">
+    <label for="text">Comment</label>
+    <textarea id="text" maxlength="5000" placeholder="Type or paste a comment..."></textarea>
+    <div class="row between">
+      <div class="row examples">
+        <span>Try:</span>
+        <button class="chip" data-example="Great article, thanks for sharing!">Friendly</button>
+        <button class="chip" data-example="I disagree with this policy.">Disagreement</button>
+        <button class="chip" data-example="I hate you, you're so stupid and ugly">Abusive</button>
+      </div>
+      <span class="count"><span id="count">0</span> / 5000</span>
+    </div>
+
+    <div class="row switches">
+      <label><input type="checkbox" id="retry"> Simulate a failing Gemini call (retries)</label>
+      <label><input type="checkbox" id="hang"> Simulate a hang (60 s)</label>
+    </div>
+    <p class="hint">The switches only work when the service runs with ENABLE_DEMO_SWITCHES=true.</p>
+
+    <button class="primary" id="check">Check comment</button>
+  </div>
+
+  <div class="card" id="result" hidden>
+    <span class="verdict" id="verdict"></span>
+    <dl id="details"></dl>
+  </div>
+
+  <p class="stats">Real Gemini calls made by this instance: <strong id="calls">-</strong></p>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const text = $("text");
+
+  text.addEventListener("input", () => { $("count").textContent = text.value.length; });
+  document.querySelectorAll("[data-example]").forEach((b) =>
+    b.addEventListener("click", () => { text.value = b.dataset.example; text.dispatchEvent(new Event("input")); text.focus(); }));
+
+  async function refresh() {
+    try {
+      const health = await (await fetch("health")).json();
+      $("policy").textContent = `Policy: ${health.policy}.`;
+      const stats = await (await fetch("stats")).json();
+      $("calls").textContent = stats.gemini_call_count;
+    } catch { /* the page still works without these */ }
+  }
+
+  function show(kind, title, rows) {
+    $("verdict").className = `verdict ${kind}`;
+    $("verdict").textContent = title;
+    const dl = $("details");
+    dl.replaceChildren();
+    for (const [k, v] of rows) {
+      const dt = document.createElement("dt"); dt.textContent = k;
+      const dd = document.createElement("dd"); dd.textContent = v;
+      dl.append(dt, dd);
+    }
+    $("result").hidden = false;
+  }
+
+  $("check").addEventListener("click", async () => {
+    const params = new URLSearchParams();
+    if ($("retry").checked) params.set("simulate_transient_failure", "true");
+    if ($("hang").checked) params.set("simulate_hang", "true");
+    const button = $("check");
+    button.disabled = true;
+    button.textContent = "Checking...";
+    const start = performance.now();
+    try {
+      const query = params.toString();
+      const res = await fetch("moderate" + (query ? "?" + query : ""), {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: text.value }),
+      });
+      const seconds = ((performance.now() - start) / 1000).toFixed(2) + " s";
+      const data = await res.json().catch(() => ({ error: res.statusText || "no response body" }));
+      if (res.ok) {
+        show(data.flagged ? "bad" : "ok", data.flagged ? "Flagged" : "Allowed", [
+          ["Category", data.category], ["Reasoning", data.reasoning], ["Policy", data.policy],
+          ["From cache", data.cache_hit ? "yes (no Gemini call)" : "no (real Gemini call)"], ["Time", seconds],
+        ]);
+      } else {
+        show("err", `Error ${res.status}`, [["Message", data.error || JSON.stringify(data)], ["Time", seconds]]);
+      }
+    } catch (e) {
+      show("err", "Request failed", [["Message", String(e)]]);
+    } finally {
+      button.disabled = false;
+      button.textContent = "Check comment";
+      refresh();
+    }
+  });
+
+  refresh();
+</script>
+</body>
+</html>

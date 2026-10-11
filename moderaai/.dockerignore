@@ -1,0 +1,5 @@
+# Keep the image small and free of local files: only requirements.txt and main.py are needed.
+.env*
+__pycache__/
+*.pyc
+.venv/

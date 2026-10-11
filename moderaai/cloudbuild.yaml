@@ -1,0 +1,36 @@
+# NOTE on build context: this file is invoked two ways -
+#   1) manually (gcloud builds submit, topic 2), run from the repo root so
+#      /workspace = the whole repo, same as case 2 below
+#   2) via the CI/CD trigger (topic 3), which always checks out the WHOLE
+#      connected repo to /workspace, never just the moderaai/ folder
+# Both cases put /workspace at the repo root, so the build step points at
+# the service's folder explicitly via `dir:` rather than assuming '.' is it.
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    dir: 'moderaai'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/moderaai-repo/moderaai:${_TAG}', '.']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/moderaai-repo/moderaai:${_TAG}']
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - moderaai
+      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/moderaai-repo/moderaai:${_TAG}'
+      - '--region=${_REGION}'
+      - '--allow-unauthenticated'
+      # Set every setting explicitly. Otherwise the deploy keeps whatever the service had last
+      # (for example MODERATION_POLICY=strict left behind by the topic 5 rollback).
+      - '--service-account=moderaai-sa@${PROJECT_ID}.iam.gserviceaccount.com'
+      - '--set-env-vars=PROJECT_ID=${PROJECT_ID},LOCATION=${_REGION},MODERATION_POLICY=standard,MODEL_NAME=gemini-2.5-flash,GEMINI_TIMEOUT_MS=10000,CACHE_TTL_SECONDS=3600,ENABLE_DEMO_SWITCHES=true'
+      - '--max-instances=10'
+      - '--timeout=30'
+substitutions:
+  _REGION: us-central1
+  _TAG: latest
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/moderaai-repo/moderaai:${_TAG}'
+options:
+  # Required when the build runs as a specific service account (as the topic 3 trigger does).
+  logging: CLOUD_LOGGING_ONLY

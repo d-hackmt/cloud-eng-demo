@@ -1,0 +1,51 @@
+swagger: "2.0"
+info:
+  title: moderaai-gateway
+  description: API Gateway front door for ModeraAI, with a declarative rate limit.
+  version: 1.0.0
+schemes:
+  - https
+produces:
+  - application/json
+x-google-backend:
+  address: https://moderaai-1039893753206.us-central1.run.app
+  protocol: h2
+x-google-management:
+  metrics:
+    - name: "moderate-requests"
+      displayName: "Moderate Requests"
+      valueType: INT64
+      metricKind: DELTA
+  quota:
+    limits:
+      - name: "moderate-limit"
+        metric: "moderate-requests"
+        unit: "1/min/{project}"
+        values:
+          STANDARD: 10
+paths:
+  /moderate:
+    post:
+      summary: Moderate a piece of text
+      operationId: moderate
+      security:
+        - api_key: []
+      x-google-quota:
+        metricCosts:
+          moderate-requests: 1
+      responses:
+        "200":
+          description: Moderation result
+      parameters: []
+  /health:
+    get:
+      summary: Health check
+      operationId: health
+      responses:
+        "200":
+          description: OK
+securityDefinitions:
+  api_key:
+    type: "apiKey"
+    name: "key"
+    in: "query"
