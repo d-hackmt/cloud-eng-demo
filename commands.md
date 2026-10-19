@@ -641,21 +641,22 @@ for f in landscape.png friendly-text.png insult-text.png rude-gesture.jpg museum
 done
 ```
 
-What Gemini decided (2026-10-11, standard policy):
+What Gemini decided (standard policy, over several runs on 2026-10-11 and 2026-10-19):
 
 | Image | flagged | Why |
 |---|---|---|
 | `landscape.png` | false | nothing to flag |
 | `friendly-text.png` | false | reads "Have a great day!" |
 | `insult-text.png` | **true** | reads "You are stupid and ugly. I hate you." |
-| `rude-gesture.jpg` | **true** | middle-finger gesture |
+| `rude-gesture.jpg` | varies | borderline: flagged in 3 runs, allowed in 1 (the gesture is a small sticker in a street photo) |
 | `museum-weapons.jpg` | false | weapons, but in a museum display |
-| `handgun.jpg` | varies | borderline: allowed in a local test, flagged as "unsafe" on Cloud Run the same day |
+| `handgun.jpg` | varies | borderline: allowed in 2 runs, flagged as "unsafe" in 2 |
 | `handgun-threat.jpg` | **true** | reads the threat "I know where you live. You're next." |
 
-The clear cases gave the same answer every time. The handgun on its own is a judgement call, and the model doesn't
-always make it the same way; a real policy would say explicitly whether weapon photos are allowed. The `category`
-text is the model's own wording, so it varies too (`harassment`, `Harassment / Threats`, ...).
+The clear cases gave the same answer every time. The handgun on its own and the small rude gesture are judgement
+calls, and the model doesn't always make them the same way; a real policy would say explicitly whether weapon photos
+or rude gestures are allowed. Once a verdict is cached, the same image gets the same answer for an hour. The
+`category` text is the model's own wording, so it varies too (`harassment`, `Harassment / Threats`, ...).
 
 The same image sent twice is a cache hit (`"cache_hit": true`); the key is a hash of the image bytes plus the policy,
 and only the verdict is stored, never the image. The limits:
