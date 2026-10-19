@@ -19,14 +19,16 @@ Every Gemini call costs real money and real time. In a moderation use case, the 
 
 ## How It Fits Together
 
-```mermaid
-flowchart TD
-    A[POST /moderate] --> B[hash the text]
-    B --> C{Found in Firestore<br/>cache and not expired?}
-    C -->|Yes| D["Return cached result<br/>cache_hit: true"]
-    C -->|No| E[Call Gemini]
-    E --> F[Save result + timestamp to Firestore]
-    F --> G["Return fresh result<br/>cache_hit: false"]
+```text
+POST /moderate
+      │
+      ▼
+hash of (policy + trimmed, lower-cased text)
+      │
+      ▼
+In the Firestore cache, and saved less than an hour ago?
+      ├── yes ──► return the saved verdict ─────────────────────────────────► cache_hit: true
+      └── no ───► call Gemini ──► save the verdict + time ──► return it ────► cache_hit: false
 ```
 
 ## Hands-On

@@ -18,11 +18,14 @@ An AI service can fail in ways a normal service can't: not by crashing, but by q
 
 ## How It Fits Together
 
-```mermaid
-flowchart LR
-    A[v2 deployed, gets 100% traffic] --> B[v2 over-flags safe text]
-    B --> C["gcloud run services update-traffic --to-revisions=v1=100"]
-    C --> D[v1 serving 100% again, instantly]
+```text
+v2 gets 100% of traffic ──► v2 over-flags safe text
+                                    │
+                                    ▼
+gcloud run services update-traffic moderaai --to-revisions=$V1_REVISION=100
+                                    │
+                                    ▼
+v1 serves 100% again within seconds (no rebuild, no redeploy)
 ```
 
 ## Hands-On

@@ -19,16 +19,11 @@ AI calls are the single most expensive line item in a service like ModeraAI — 
 
 ## How It Fits Together
 
-```mermaid
-flowchart TD
-    A[Cost Optimization] --> B["Caching (topic 6):<br/>fewer real Gemini calls"]
-    A --> C["Scaling (topic 1):<br/>--max-instances caps runaway spend"]
-    A --> D["Model choice:<br/>Flash vs Pro"]
-    A --> E["Rate Limiting (topic 9):<br/>caps abuse-driven spend"]
-    B --> F[Lower monthly bill]
-    C --> F
-    D --> F
-    E --> F
+```text
+caching (topic 6) ──────────────── fewer real Gemini calls ────┐
+model choice (Flash vs Pro) ────── a cheaper price per call ───┤
+max-instances (topic 1) ────────── caps runaway spend ─────────┼──► a smaller monthly bill
+rate limiting (topic 9) ────────── caps abuse-driven spend ────┘
 ```
 
 ## Hands-On

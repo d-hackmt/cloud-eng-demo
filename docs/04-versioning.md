@@ -19,12 +19,11 @@ AI services are especially easy to accidentally "silently change" — a tweaked 
 
 ## How It Fits Together
 
-```mermaid
-flowchart TD
-    A["moderaai:v1.0.0<br/>MODERATION_POLICY=standard"] --> B[Cloud Run revision moderaai-00001]
-    C["moderaai:v2.0.0<br/>MODERATION_POLICY=strict"] --> D[Cloud Run revision moderaai-00002]
-    B -->|100% traffic initially| E[Live]
-    D -.->|0% traffic until promoted| E
+```text
+moderaai:v1.0.0  (MODERATION_POLICY=standard) ──► revision 1 ──► 100% of traffic ─────────┐
+                                                                                          ├──► the live service
+moderaai:v2.0.0  (MODERATION_POLICY=strict)   ──► revision 2 ──► 0% until promoted ┄┄┄┄┄┄┄┘
+                                                                  (reachable on its own tagged URL)
 ```
 
 ## Hands-On

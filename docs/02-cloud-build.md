@@ -19,12 +19,8 @@ Once a team is bigger than one person, "build it on my laptop" stops being relia
 
 ## How It Fits Together
 
-```mermaid
-flowchart LR
-    A[Source code] --> B[Cloud Build]
-    B --> C["docker build (via Dockerfile)"]
-    C --> D[Push image to Artifact Registry]
-    D --> E[Ready for Cloud Run to deploy]
+```text
+Source code ──► Cloud Build ──► docker build (Dockerfile) ──► push to Artifact Registry ──► deploy to Cloud Run
 ```
 
 ## Hands-On

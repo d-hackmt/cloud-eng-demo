@@ -45,15 +45,13 @@ Rather than hand-building rate-limiting logic, this topic reuses **API Gateway's
 
 ## How the pieces connect
 
-```mermaid
-flowchart TD
-    A["ModeraAI v1<br/>deployed via Cloud Build + CI/CD"] --> B["Scaling: scripts/load_test.py"]
-    A --> C["Caching + Retries + Timeouts<br/>(built into the service)"]
-    D["ModeraAI v2<br/>stricter policy"] --> E["Rollback to v1"]
-    A --> F["API Gateway<br/>rate limiting"]
-    B --> G["Cost Optimization<br/>ties it all together"]
-    C --> G
-    F --> G
+```text
+ModeraAI v1 (deployed by Cloud Build + CI/CD)
+  ├──► Scaling (scripts/load_test.py) ───────────┐
+  ├──► Caching + retries + timeouts (built in) ──┼──► Cost optimization (ties it all together)
+  └──► API Gateway rate limiting ────────────────┘
+
+ModeraAI v2 (stricter policy) ──► Rollback to v1
 ```
 
 ## Prerequisites before starting

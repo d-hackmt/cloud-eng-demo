@@ -18,12 +18,12 @@ A hung request is worse than a failed one — it ties up an instance, a connecti
 
 ## How It Fits Together
 
-```mermaid
-flowchart TD
-    A[Call Gemini] --> B{Responds within<br/>timeout window?}
-    B -->|Yes| C[Return result]
-    B -->|No| D[Abort the call]
-    D --> E[Return a clear timeout error]
+```text
+call Gemini
+      ├── answers within 10 s ──► return the result
+      └── no answer in 10 s ────► abort the call ──► retry (topic 7) ──► still nothing: clean error, HTTP 502
+
+behind everything: Cloud Run cuts off any request still running after 30 s ──► HTTP 504
 ```
 
 ## Hands-On

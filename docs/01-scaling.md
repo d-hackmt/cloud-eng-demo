@@ -23,13 +23,14 @@ AI calls are slow compared to a normal API — a Gemini call can take a second o
 
 ## How It Fits Together
 
-```mermaid
-flowchart LR
-    A[50 requests arrive at once] --> B{Cloud Run}
-    B -->|below max-instances| C[Spins up more instances]
-    B -->|at max-instances| D[Requests queue and wait]
-    C --> E[Requests handled in parallel]
-    D --> F[Slower responses, no crash]
+```text
+50 requests arrive at once
+            │
+            ▼
+        Cloud Run
+            ├── below max-instances ──► starts more instances ──► requests handled in parallel
+            └── at max-instances ─────► requests wait, or are refused with HTTP 429 ("try again")
+                                        (slower or refused, but no crash and no runaway bill)
 ```
 
 ## Hands-On

@@ -19,12 +19,8 @@ AI services change often — a new prompt, a tweaked policy, a new model version
 
 ## How It Fits Together
 
-```mermaid
-flowchart LR
-    A[git push to GitHub] --> B[Cloud Build Trigger fires]
-    B --> C[cloudbuild.yaml runs]
-    C --> D[New image built + pushed]
-    D --> E[Cloud Run deploys automatically]
+```text
+git push to GitHub ──► trigger fires ──► cloudbuild.yaml runs ──► image built + pushed ──► Cloud Run deploys it
 ```
 
 ## Hands-On

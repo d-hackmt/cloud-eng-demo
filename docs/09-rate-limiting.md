@@ -20,11 +20,10 @@ Every request to ModeraAI triggers a real, billed Gemini call. Without a limit, 
 
 ## How It Fits Together
 
-```mermaid
-flowchart LR
-    A[Caller sends requests] --> B[API Gateway]
-    B -->|under quota| C[ModeraAI]
-    B -->|over quota| D["429 rejected<br/>(ModeraAI never sees it)"]
+```text
+caller ──► API Gateway ──┬── no API key ─────────► 401, refused
+                         ├── under the quota ────► forwarded to ModeraAI
+                         └── over the quota ─────► 429, refused (ModeraAI never sees it)
 ```
 
 ## Hands-On

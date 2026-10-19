@@ -19,16 +19,17 @@ Calls to any external API — Gemini included — fail sometimes for reasons tha
 
 ## How It Fits Together
 
-```mermaid
-flowchart TD
-    A[Call Gemini] --> B{Success?}
-    B -->|Yes| C[Return result]
-    B -->|No, attempt 1| D[Wait 1s, retry]
-    D --> E{Success?}
-    E -->|No, attempt 2| F[Wait 2s, retry]
-    F --> G{Success?}
-    G -->|No, attempt 3 - out of retries| H[Return real error]
-    G -->|Yes| C
+```text
+attempt 1: call Gemini ── ok ──► return the result
+      │ fails
+      ▼ wait 1 s
+attempt 2: call Gemini ── ok ──► return the result
+      │ fails
+      ▼ wait 2 s
+attempt 3: call Gemini ── ok ──► return the result
+      │ fails
+      ▼
+out of attempts: return a clean error (HTTP 502)
 ```
 
 ## Hands-On
