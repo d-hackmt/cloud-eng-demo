@@ -43,7 +43,7 @@ The Dockerfile is the recipe for the image. In short, it:
 
 1. starts from a small official Python 3.12 image,
 2. installs the packages from `requirements.txt` with **uv**,
-3. copies in `main.py`,
+3. copies in the code (`main.py` and its modules),
 4. switches to a normal user, so the app doesn't run as root,
 5. starts the app with `gunicorn`, a production web server.
 

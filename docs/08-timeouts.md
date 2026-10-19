@@ -49,8 +49,9 @@ Cloud Run's `--timeout` is the backstop that always holds, because the platform 
 
 ## Common Pitfalls
 
-- Relying only on the timeout in your code and never setting Cloud Run's own `--timeout` — the platform's limit catches the hangs your code doesn't- Setting a timeout so short that normal, healthy Gemini calls get cut off — tune it against real observed latency, not a guess
-- Confusing a timeout with a retry — a timed-out call isn't automatically retried unless you explicitly combine both (which this module's `main.py` does)
+- Relying only on the timeout in your code and never setting Cloud Run's own `--timeout` — the platform's limit catches the hangs your code doesn't
+- Setting a timeout so short that normal, healthy Gemini calls get cut off — tune it against real observed latency, not a guess
+- Confusing a timeout with a retry — a timed-out call isn't automatically retried unless you explicitly combine both (which this module's `gemini.py` does)
 
 ## Quick Recap
 

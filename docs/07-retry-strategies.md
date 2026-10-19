@@ -53,8 +53,8 @@ The logs then show the retry strategy at work: two retries, after waiting 1 s an
 ```bash
 gcloud logging read 'resource.type=cloud_run_revision AND resource.labels.service_name=moderaai AND textPayload:"Retrying"' \
   --project=gcp-fde-project --limit=10 --freshness=15m --order=asc --format="value(timestamp,textPayload)"
-# -> WARNING:moderaai:Retrying main.call_gemini in 1 seconds as it raised ConnectTimeout: ... The handshake operation timed out.
-# -> WARNING:moderaai:Retrying main.call_gemini in 2 seconds as it raised ConnectTimeout: ... The handshake operation timed out.
+# -> WARNING:moderaai:Retrying gemini.call_gemini in 1 seconds as it raised ConnectTimeout: ... The handshake operation timed out.
+# -> WARNING:moderaai:Retrying gemini.call_gemini in 2 seconds as it raised ConnectTimeout: ... The handshake operation timed out.
 ```
 
 Here every attempt fails, so the caller gets a clean error after the third one. With a real, brief hiccup, the second or third attempt succeeds and the caller just sees a slightly slower answer.

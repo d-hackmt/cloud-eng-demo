@@ -281,7 +281,7 @@ gcloud builds triggers create github --name=moderaai-deploy-trigger --region=us-
 ```
 
 **4. Test it with a real push.** Any change under `moderaai/` triggers it. This one adds a small text file (the
-Dockerfile copies only `main.py` and `static/`, so the file doesn't end up in the image):
+Dockerfile copies only the `.py` files and `static/`, so the file doesn't end up in the image):
 
 ```bash
 date -u > moderaai/last-ci-test.txt
@@ -393,7 +393,7 @@ curl https://moderaai-1039893753206.us-central1.run.app/health
 
 ## Topic 6 — Caching
 
-Built into `moderaai/main.py`: each (policy, text) verdict is saved in Firestore for an hour. The same text three times:
+Built into `moderaai/cache.py`: each (policy, text) verdict is saved in Firestore for an hour. The same text three times:
 
 ```bash
 curl -w "\nTime: %{time_total}s\n" -X POST https://moderaai-1039893753206.us-central1.run.app/moderate \
@@ -437,8 +437,8 @@ The caller only gets a plain message. The logs show each retry (topic 7) and the
 ```bash
 gcloud logging read 'resource.type=cloud_run_revision AND resource.labels.service_name=moderaai AND (textPayload:"Retrying" OR textPayload:"moderation failed")' \
   --project=gcp-fde-project --limit=10 --freshness=15m --order=asc --format="value(timestamp,textPayload)"
-# -> WARNING:moderaai:Retrying main.call_gemini in 1 seconds as it raised ConnectTimeout: ... The handshake operation timed out.
-# -> WARNING:moderaai:Retrying main.call_gemini in 2 seconds as it raised ConnectTimeout: ... The handshake operation timed out.
+# -> WARNING:moderaai:Retrying gemini.call_gemini in 1 seconds as it raised ConnectTimeout: ... The handshake operation timed out.
+# -> WARNING:moderaai:Retrying gemini.call_gemini in 2 seconds as it raised ConnectTimeout: ... The handshake operation timed out.
 # -> ERROR:moderaai:moderation failed
 # (logs can take a minute to appear; run it again if it prints nothing)
 ```
@@ -618,14 +618,14 @@ EOF
 ```
 
 The numbers change from run to run, and the second run shows why: turning thinking off can change the verdict. Test
-it on a batch of real comments before using it. It is **not applied** in `moderaai/main.py`.
+it on a batch of real comments before using it. It is **not applied** in the service (`moderaai/gemini.py`).
 
 The cost levers, biggest first: caching (calls avoided entirely), the model (Flash against Pro), the thinking budget
 (tokens per call). `--max-instances` (topic 1) caps the worst case.
 
 ---
 
-## Extra A — Image moderation with Gemini (in ModeraAI)
+## Extra — Image moderation with Gemini
 
 ModeraAI has a second endpoint, `/moderate-image`, and the web page has an **Image** tab. Gemini checks what the
 image shows *and* any text written in it, with the same standard/strict policy as the text check. Nothing extra
@@ -674,48 +674,6 @@ curl -s -w "  HTTP %{http_code}\n" -F "caption=no image here" https://moderaai-1
 
 Images over 5 MB get a 413. In the browser: open https://moderaai-1039893753206.us-central1.run.app, choose the
 **Image** tab, and pick an example.
-
----
-
-## Extra B — SafeSearch demo app (local, separate from ModeraAI)
-
-A small app in `vision-demo/` that sends an image to Cloud Vision **SafeSearch**. SafeSearch doesn't decide; it scores
-five categories (adult, violence, racy, medical, spoof) from `VERY_UNLIKELY` to `VERY_LIKELY`. The app turns the scores
-into a decision with one rule you can change at the top of `vision-demo/app.py`: block if adult, violence or racy is
-`LIKELY` or higher. It runs on your laptop only, as your own gcloud login (from the setup).
-
-```bash
-gcloud services enable vision.googleapis.com --project=gcp-fde-project
-uv pip install -r vision-demo/requirements.txt
-
-uv run python vision-demo/app.py
-# -> Running on http://127.0.0.1:8081   (open it in a browser; Ctrl+C to stop)
-```
-
-In a second terminal, the same samples from the command line:
-
-```bash
-for f in landscape.png insult-text.png rude-gesture.jpg museum-weapons.jpg handgun.jpg handgun-threat.jpg; do
-  echo "== $f"
-  curl -s -F "image=@moderaai/static/samples/$f" http://127.0.0.1:8081/check
-  echo
-done
-```
-
-Gemini and SafeSearch side by side (2026-10-11):
-
-| Image | Gemini (ModeraAI) | SafeSearch + the rule |
-|---|---|---|
-| `landscape.png` | allow | allow (all `VERY_UNLIKELY`) |
-| `insult-text.png` | **flag**: reads the insult | **block**, but for the wrong reason: racy and medical came back `LIKELY` |
-| `rude-gesture.jpg` | **flag** | allow: no category covers rude gestures |
-| `museum-weapons.jpg` | allow | allow |
-| `handgun.jpg` | varies (borderline) | allow |
-| `handgun-threat.jpg` | **flag**: reads the threat | allow: SafeSearch doesn't read text |
-
-The takeaway: SafeSearch is fast, cheap and good at its fixed categories (nudity, gore), but it doesn't read text or
-judge context, and the decision rule is yours to write. Gemini follows a written policy and explains itself, at a
-higher cost per image.
 
 ---
 
@@ -799,8 +757,6 @@ gcloud services api-keys list --project=gcp-fde-project --format="value(displayN
 curl -s -o /dev/null -w "%{http_code}\n" https://moderaai-1039893753206.us-central1.run.app/health   # 404
 ```
 
-The SafeSearch app (Extra B) runs only on your laptop: stop it with Ctrl+C. It creates nothing in the project.
-
-**Left alone on purpose:** the Module 11 Maps key, the enabled APIs (including the Vision API from Extra B), the retained Cloud Logging entries, and the shared
+**Left alone on purpose:** the Module 11 Maps key, the enabled APIs, the retained Cloud Logging entries, and the shared
 Cloud Build source bucket `gcp-fde-project_cloudbuild` (used by earlier modules too; its archives contain this repo's
 files, never `.env` or tokens).

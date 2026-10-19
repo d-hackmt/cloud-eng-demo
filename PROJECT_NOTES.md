@@ -100,7 +100,7 @@ You push code to GitHub -> Cloud Build -> deploys a new revision of ModeraAI
 
 ### How you would actually do it
 
-1. **Build the checker:** one endpoint, text in and a verdict out. This is `moderaai/main.py`.
+1. **Build the checker:** one endpoint, text in and a verdict out. This is `moderaai/` (`main.py` and its modules).
 2. **Deploy it** to Cloud Run (topics 1 and 2).
 3. **Automate deploys** from GitHub (topic 3).
 4. **Add the protections in the code:** the cache, the retries and the timeouts (topics 6 to 8).
@@ -151,7 +151,7 @@ These were made after the teardown, then deployed to Cloud Run (from source and 
 | A simple web page at `/` | try the service in a browser, without `curl` |
 | The failure switches (`?simulate_transient_failure`, `?simulate_hang`) removed | anyone could use them on the public service; topics 7 and 8 now use a temporary 1 ms-timeout revision, which shows real retries and a real timeout |
 | Image moderation with Gemini: `POST /moderate-image` and an Image tab on the page, with sample images | Gemini reads text in images and judges context; same policy, cache and limits as text (5 MB, JPEG/PNG/WebP only) |
-| `vision-demo/`: a separate local app using Cloud Vision SafeSearch | to compare: SafeSearch only scores fixed categories and doesn't read text (it allowed the gun-with-a-threat image that Gemini flagged) |
+| The service code split into modules (`config`, `schemas`, `prompts`, `gemini`, `cache`, `images`), with `main.py` holding only the routes | each file has one job, so a lesson can point at exactly the code it's about |
 | The Windows `.bat` scripts and the teaching plan removed | replaced by `commands.md`; the `.bat` files were broken anyway (old paths, `--tag=v2`) |
 | Texts over 5,000 characters get a 413; a body that isn't a JSON object gets a 400 instead of a 500 | caps the cost of one request; a JSON list used to crash the handler |
 | The comment is sent to Gemini apart from the instructions | a comment can't easily give the model orders; a test "ignore your rules" comment was flagged, not obeyed |

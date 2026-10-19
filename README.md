@@ -8,11 +8,18 @@ One small, self-contained Flask service, **ModeraAI** (a content moderation API)
 
 ```
 cloud-eng-demo/                (https://github.com/d-hackmt/cloud-eng-demo)
-├── moderaai/                  the service: main.py, Dockerfile (installs with uv), requirements.txt,
-│                              cloudbuild.yaml, .dockerignore, static/index.html (the web page at /)
-│                              and static/samples/ (example images, credits in CREDITS.md)
-│                              (keep this path: the CI/CD trigger and cloudbuild.yaml point at it)
-├── vision-demo/               a separate local app: Cloud Vision SafeSearch scores for an image
+├── moderaai/                  the service (keep this path: the CI/CD trigger and cloudbuild.yaml point at it)
+│   ├── main.py                the web routes: /, /health, /moderate, /moderate-image, /stats
+│   ├── config.py              settings from environment variables
+│   ├── schemas.py             the shape of a verdict
+│   ├── prompts.py             the instructions Gemini gets (standard or strict policy)
+│   ├── gemini.py              calling Gemini: time limit, retries, safety blocks
+│   ├── cache.py               the verdict cache in Firestore
+│   ├── images.py              checking an upload is a JPEG, PNG or WebP
+│   ├── static/                the web page (index.html) and example images (samples/, credits in CREDITS.md)
+│   ├── Dockerfile             the container recipe (installs with uv)
+│   ├── requirements.txt       the service's packages
+│   └── cloudbuild.yaml        build, push and deploy (topics 2 and 3)
 ├── scripts/
 │   ├── load_test.py           fires N concurrent requests (topics 1 and 9)
 │   └── cost_comparison_demo.py  Flash vs Pro tokens, and what caching saves (topic 10)
@@ -35,8 +42,8 @@ cloud-eng-demo/                (https://github.com/d-hackmt/cloud-eng-demo)
 | 3 | CI/CD | a push to GitHub deploys the service by itself | a Cloud Build trigger |
 | 4 | Versioning | deploy v2 next to v1 at 0% traffic | `gcloud run deploy --no-traffic --tag` |
 | 5 | Rollbacks | promote v2, see it wrongly flag safe text, roll back to v1 | `gcloud run services update-traffic` |
-| 6 | Caching | the same text twice: the second answer is instant | built into `main.py` |
-| 7 | Retries | a temporary revision whose Gemini calls time out: the logs show each retry | built into `main.py` |
+| 6 | Caching | the same text twice: the second answer is instant | `moderaai/cache.py` |
+| 7 | Retries | a temporary revision whose Gemini calls time out: the logs show each retry | `moderaai/gemini.py` |
 | 8 | Timeouts | the same revision ends in a clean 502 instead of hanging; Cloud Run cuts anything past 30 s | `GEMINI_TIMEOUT_MS`, `--timeout=30` |
 | 9 | Rate limiting | API Gateway limits each project to 10 requests a minute | `gateway/openapi_spec.yaml` |
 | 10 | Cost | Flash against Pro, and how many Gemini calls caching avoids | `scripts/cost_comparison_demo.py` |
@@ -52,15 +59,11 @@ Open https://moderaai-1039893753206.us-central1.run.app. The page has two tabs:
 
 It's one HTML file, `moderaai/static/index.html`, calling the same API as `curl`.
 
-## Image moderation: Gemini vs Cloud Vision SafeSearch
+## Image moderation
 
-ModeraAI checks images with **Gemini**: it follows the written policy, reads text in the image, and understands
-context (weapons in a museum are fine; a gun with "You're next." written on it is not).
-
-`vision-demo/` is a **separate small local app** for comparison. It uses **Cloud Vision SafeSearch**, which doesn't
-decide anything: it scores five fixed categories (adult, violence, racy, medical, spoof), and the app turns the
-scores into a decision with one rule. It's cheaper and faster, but it doesn't read text or judge context. Run both on
-the same sample images to see the difference: `commands.md`, Extras A and B.
+ModeraAI checks images with **Gemini**, the same model as the text check: it follows the written policy, reads text
+in the image, and understands context (weapons in a museum are fine; a gun with "You're next." written on it is not).
+The commands and sample results are in `commands.md`, section "Extra — Image moderation with Gemini".
 
 ## Setup
 
@@ -112,7 +115,7 @@ Follow [`commands.md`](commands.md); the order matters:
 6. Topics 6 to 8: `curl` calls against the service, and a temporary 1 ms-timeout revision.
 7. Topic 9: create the gateway (about 11 minutes), then the API key, which is restricted to this API.
 8. Topic 10: `uv run python scripts/cost_comparison_demo.py`.
-9. Extras A and B: image moderation with Gemini, and the SafeSearch comparison app.
+9. Extra: image moderation with Gemini.
 10. Teardown, at the end of `commands.md`.
 
 ## What was changed from the course files

@@ -6,11 +6,11 @@ COPY --from=ghcr.io/astral-sh/uv:0.8.14 /uv /bin/uv
 
 WORKDIR /app
 
-# Install the dependencies first, so Docker can reuse this layer when only main.py changes.
+# Install the dependencies first, so Docker can reuse this layer when only the code changes.
 COPY requirements.txt .
 RUN uv pip install --system --no-cache -r requirements.txt
 
-COPY main.py .
+COPY *.py ./
 COPY static/ static/
 
 # Don't run the app as root inside the container.
